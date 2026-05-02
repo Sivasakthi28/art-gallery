@@ -618,11 +618,13 @@ header.on-hero:not(.scrolled) .mobile-menu-toggle span {
         display: flex;
         align-items: center;
         gap: 15px;
+        order: 2;
     }
 
     .mobile-menu-toggle { 
         display: flex; 
         margin-left: 5px;
+        order: 3;
     }
 
     #main-nav {
@@ -652,6 +654,7 @@ header.on-hero:not(.scrolled) .mobile-menu-toggle span {
     .nav-links a {
         font-size: 1.4rem;
         width: 100%;
+        color: var(--text-color) !important;
     }
 
     .nav-actions {
