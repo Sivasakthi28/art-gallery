@@ -83,7 +83,7 @@ export const renderProductCard = (art) => {
 export const pages = {
     home: () => `
         <section class="hero" id="home">
-            <video class="hero-video" autoplay muted loop playsinline>
+            <video class="hero-video" autoplay muted loop playsinline webkit-playsinline poster="images/wall-bg.png" style="background-color: #000;">
                 <source src="https://www.pexels.com/download/video/29151073/" type="video/mp4">
             </video>
             <div class="hero-overlay"></div>

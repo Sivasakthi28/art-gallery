@@ -686,15 +686,42 @@ header.on-hero:not(.scrolled) .mobile-menu-toggle span {
     .logo { gap: 6px; }
     
     .product-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .product-info {
+        padding: 5px;
+    }
+
+    .product-title {
+        font-size: 0.9rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .product-price {
+        font-size: 0.9rem;
     }
 
     .hero-content h1 {
-        font-size: 2rem;
+        font-size: 1.6rem;
+        margin-bottom: 5px;
+        line-height: 1.3;
+    }
+
+    .hero-content p {
+        display: none;
     }
 
     .hero {
-        height: 60vh;
+        height: 35vh;
+        min-height: 250px;
+    }
+
+    .hero-video {
+        object-position: center center;
     }
 
     .nav-actions select {
@@ -703,8 +730,9 @@ header.on-hero:not(.scrolled) .mobile-menu-toggle span {
     
     .btn {
         width: 100%;
-        padding: 1rem;
-        min-height: 48px;
+        padding: 0.6rem;
+        font-size: 0.9rem;
+        min-height: 40px;
     }
 
     .section-title {
