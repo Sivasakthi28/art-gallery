@@ -1,4 +1,4 @@
-export const recent = {
+﻿export const recent = {
     items: JSON.parse(localStorage.getItem('recentlyViewed')) || [],
 
     addProduct(art) {
@@ -34,3 +34,4 @@ export const recent = {
         return this.items;
     }
 };
+

@@ -15,11 +15,8 @@ const cp = (p) => window.appInstance ? window.appInstance.convertPrice(p) : p;
 const fp = (p) => window.appInstance ? window.appInstance.formatPrice(p) : `$${p}`;
 
 export const renderSliderCard = (art) => {
-    const cp = (p) => window.appInstance ? window.appInstance.convertPrice(p) : p;
-    const fp = (p) => window.appInstance ? window.appInstance.formatPrice(p) : `$${p}`;
-    
     return `
-    <div class="slider-slide" data-id="${art.id}" data-link="product" data-param="${art.id}">
+    <div class="slider-slide" data-link="product" data-param="${art.id}">
         <img src="${art.image}" alt="${art.title}" class="slider-image ${art.needsRotation ? 'rotate-90' : ''}" loading="lazy">
         <div class="slider-content">
             <div class="slider-badge">Featured Artwork</div>
@@ -37,18 +34,24 @@ export const renderSliderCard = (art) => {
 
 export const renderProductCard = (art) => {
     const isWishlisted = wishlist && wishlist.isInWishlist(art.id);
-    // Backward compatibility: use art.image if media array doesn't exist
     const previewMedia = (art.media && art.media.length > 0) ? art.media[0] : { type: 'image', url: art.image };
     
     const ratingData = window.appInstance ? window.appInstance.getRatingData(art.id) : { avg: 0, count: 0 };
-    const stockStatus = art.stock === 0 
+    
+    // Get starting price and total stock
+    // Requirement 3: Fix "Starting from" logic
+    const startPrice = window.appInstance ? window.appInstance.getStartingPrice(art) : (art.price || 0);
+    const hasVariants = art.variants && art.variants.length > 0;
+    const totalStock = art.variants ? art.variants.reduce((acc, v) => acc + v.stock, 0) : (art.stock || 0);
+
+    const stockStatus = totalStock === 0 
         ? '<span class="stock-badge stock-out">Out of Stock</span>'
-        : art.stock < 5 
-            ? `<span class="stock-badge stock-low">Only ${art.stock} left 🔥</span>`
+        : totalStock < 5 
+            ? `<span class="stock-badge stock-low">Only ${totalStock} left 🔥</span>`
             : '';
 
     return `
-    <article class="product-card" data-id="${art.id}" data-link="product" data-param="${art.id}">
+    <article class="product-card" data-link="product" data-param="${art.id}">
         <div class="wishlist-btn ${isWishlisted ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleWishlist('${art.id}')">
             ${isWishlisted ? '❤️' : '🤍'}
         </div>
@@ -57,16 +60,16 @@ export const renderProductCard = (art) => {
                 ? `<video src="${art.media[0].url}" class="product-image ${art.needsRotation ? 'rotate-90' : ''}" muted loop onmouseover="this.play()" onmouseout="this.pause(); this.currentTime=0;"></video>` 
                 : `<img src="${art.image}" alt="${art.title}" class="product-image ${art.needsRotation ? 'rotate-90' : ''}" loading="lazy">`
             }
-            ${art.stock === 0 ? '<div class="out-of-stock-overlay">SOLD OUT</div>' : ''}
-            <button class="quick-add btn-primary" onclick="event.stopPropagation(); ${art.stock > 0 ? `window.appInstance.addToCart('${art.id}')` : 'return false;'}">
-                ${art.stock > 0 ? 'Add to Cart' : 'Unavailable'}
+            ${totalStock === 0 ? '<div class="out-of-stock-overlay">SOLD OUT</div>' : ''}
+            <button class="quick-add btn-primary" onclick="event.stopPropagation(); ${totalStock > 0 ? `window.appInstance.addToCart('${art.id}')` : 'return false;'}">
+                ${totalStock > 0 ? 'Add to Cart' : 'Unavailable'}
             </button>
         </div>
         <div class="product-info">
             <h3 class="product-title">${art.title}</h3>
             <p class="product-artist">${art.artist}</p>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                <p class="product-price">${fp(cp(art.price))}</p>
+                <p class="product-price">${art.variants ? 'Starting from ' : ''}${fp(cp(startPrice))}</p>
                 <div style="color: #f39c12; font-size: 0.85rem;">
                     ${renderStars(ratingData.avg)}
                 </div>
@@ -97,7 +100,7 @@ export const pages = {
             </div>
             <div class="slider-container">
                 <div class="slider-track" id="slider-track">
-                    ${getFeaturedArtworks().map(renderSliderCard).join('')}
+                    ${(getFeaturedArtworks() || []).map(renderSliderCard).join('')}
                 </div>
 
                 <button class="slider-btn left" id="slide-left" aria-label="Previous Slide">❮</button>
@@ -147,7 +150,7 @@ export const pages = {
                 </div>
                 <div>
                     <h2 class="section-title" style="text-align: left; margin-bottom: var(--space-md);">The Legacy of Raja Ravi Varma</h2>
-                    <p style="color: var(--text-muted); margin-bottom: var(--space-md); line-height: 1.6;">Raja Ravi Varma (1848–1906) was a legendary Indian painter who revolutionized Indian art by fusing European academic techniques with purely Indian sensibilities. At Varma Gallery, we draw inspiration from his pioneering spirit of making fine art accessible to all.</p>
+                    <p style="color: var(--text-muted); margin-bottom: var(--space-md); line-height: 1.6;">Raja Ravi Varma (1848–1906) was a legendary Indian painter who revolutionized Indian art by fusing European academic techniques with purely Indian sensibilities. At AuraArt Gallery, we draw inspiration from his pioneering spirit of making fine art accessible to all.</p>
                     <p style="color: var(--text-muted); margin-bottom: var(--space-lg); line-height: 1.6;">Known for his depictions of Hindu deities and scenes from Indian literature, Varma's lithographic press ensured that his masterpieces reached the homes of millions, defining the visual identity of a nation.</p>
                     <button class="btn btn-primary" data-link="varma-history">Learn More About Varma</button>
                 </div>
@@ -189,29 +192,6 @@ export const pages = {
                     <input type="text" id="shop-search" placeholder="${t('search')}" style="width: 100%; padding: 0.5rem 1rem; border: 1px solid var(--border-color); font-family: var(--font-body); outline: none;" autocomplete="off">
                     <div id="search-suggestions" class="search-suggestions"></div>
                 </div>
-                <div class="filters" style="display: flex; flex-wrap: wrap; gap: var(--space-md);">
-                    <select class="filter-select" id="filter-type">
-                        <option value="all">${t('allMediums')}</option>
-                        <option value="painting">Paintings</option>
-                        <option value="sketch">Sketches</option>
-                        <option value="digital">Digital Art</option>
-                        <option value="photography">Photography</option>
-                        <option value="sculpture">Sculptures</option>
-                    </select>
-                    <select class="filter-select" id="filter-price">
-                        <option value="all">${t('allPrices')}</option>
-                        <option value="under500">Under $500</option>
-                        <option value="500to1000">$500 - $1000</option>
-                        <option value="over1000">Over $1000</option>
-                    </select>
-                </div>
-                <div class="sort">
-                    <select class="filter-select" id="sort-by">
-                        <option value="featured">${t('sortBy')}: ${t('featured')}</option>
-                        <option value="price-low">${t('lowToHigh')}</option>
-                        <option value="price-high">${t('highToHigh')}</option>
-                    </select>
-                </div>
             </div>
             <div class="product-grid" id="shop-grid">
                 ${(artworks && artworks.length > 0) ? artworks.map(renderProductCard).join('') : '<p style="text-align: center; grid-column: 1/-1; padding: var(--space-lg); color: var(--text-muted);">No products found. Please add products via the Admin Dashboard.</p>'}
@@ -241,18 +221,39 @@ export const pages = {
         if (!art) return `<div class="container section-padding" style="padding-top: 120px; text-align: center;"><h1>Artwork not found</h1><button class="btn" data-link="shop">Back to Gallery</button></div>`;
         
         window.currentProduct = art;
+        // Requirement 8: Debug Protection
+        console.log("Variants:", art.variants);
+        const hasVariants = !!(art.variants && art.variants.length > 0);
+        const selectedFrame = localStorage.getItem(`frame_${id}`) || 'none';
+        const fp = (p) => window.appInstance ? window.appInstance.formatPrice(p) : `$${p}`;
+        const cp = (p) => window.appInstance ? window.appInstance.convertPrice(p) : p;
+
+        const selected = window.appInstance?.selectedVariants[id] || (art.variants ? art.variants[0] : null);
+        const currentPrice = selected ? selected.price : art.price;
+        const currentSize = selected ? selected.size : 'Standard';
+        const currentStock = selected ? selected.stock : (art.stock || 0);
+
         const medium = art.medium || art.category || "Mixed Media";
         const dimensions = art.size || art.dimensions || '24" x 36" (Standard)';
         const orientation = art.orientation || "Portrait / Landscape";
         const description = art.description || `An exquisite ${medium.toLowerCase()} piece by ${art.artist}. This artwork captures the essence of contemporary aesthetics and emotion, making it a perfect centerpiece for any modern space.`;
         const media = (art.media && art.media.length > 0) ? art.media : [{ type: 'image', url: art.image }];
 
+        // Calculate initial frame styles to prevent flicker
+        let frameBg = 'none';
+        let innerStyle = 'top: 0; left: 0; width: 100%; height: 100%;';
+        
+        if (selectedFrame && selectedFrame !== 'none') {
+            frameBg = `url('images/frame-${selectedFrame}.png')`;
+            innerStyle = 'top: 12%; left: 12%; width: 76%; height: 76%;';
+        }
+
         return `
         <section class="container section-padding" style="padding-top: 120px;">
             <div class="product-detail-grid">
                 <div class="product-gallery" style="display: flex; gap: 20px;">
                     <div class="thumbnail-strip" style="display: flex; flex-direction: column; gap: 12px; max-height: 500px; overflow-y: auto; padding-right: 5px;">
-                        ${media.map((item, index) => `
+                        ${(media || []).map((item, index) => `
                             <div class="thumb ${index === 0 ? 'active' : ''}" 
                                  onclick="window.appInstance.changeMedia(${index}, '${id}')" 
                                  style="width: 60px; height: 60px; border: 2px solid ${index === 0 ? '#007185' : '#ddd'}; border-radius: 8px; cursor: pointer; flex-shrink: 0; background: #fff; overflow: hidden; transition: border-color 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
@@ -268,9 +269,13 @@ export const pages = {
                         ${media[0].type === 'video' 
                             ? `<video src="${media[0].url}" controls autoplay muted class="product-image ${art.needsRotation ? 'rotate-90' : ''}" style="height: 100%; width: 100%; object-fit: contain;"></video>`
                             : `
-                            <div class="zoom-container" onclick="window.appInstance.openFullscreen('${media[0].url}')">
-                                <img src="${media[0].url}" alt="${art.title}" class="zoom-image ${art.needsRotation ? 'rotate-90' : ''}" style="height: 100%; width: 100%; object-fit: contain; transform: ${art.needsRotation ? 'rotate(90deg)' : 'none'};">
-                                <div class="zoom-hint">Roll over to zoom | Click for full view</div>
+                            <div class="zoom-container" onclick="window.appInstance.openFullscreen('${media[0].url}')" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fdfdfd;">
+                                <div id="frame-master-wrapper" class="artwork-frame-wrapper ${selectedFrame !== 'none' ? 'has-frame' : ''}" style="position: relative; width: ${selectedFrame !== 'none' ? 'auto' : '100%'}; height: 500px; display: flex; align-items: center; justify-content: center; background-size: 100% 100%; background-position: center; transition: all 0.5s ease-in-out; background-image: ${frameBg};">
+                                    <div id="artwork-inner-container" style="position: relative; transition: all 0.5s ease-in-out; display: flex; align-items: center; justify-content: center; overflow: hidden; ${innerStyle}">
+                                        <img src="${media[0].url}" alt="${art.title}" class="zoom-image ${art.needsRotation ? 'rotate-90' : ''}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; box-shadow: 0 4px 15px rgba(0,0,0,0.1); z-index: 1;">
+                                    </div>
+                                </div>
+                                <div class="zoom-hint" style="z-index: 3;">Roll over to zoom | Click for full view</div>
                             </div>
                             `
                         }
@@ -279,30 +284,64 @@ export const pages = {
                 <div class="product-details" style="padding-top: var(--space-md);">
                     <h1 style="font-size: 3rem; margin-bottom: var(--space-sm);">${art.title}</h1>
                     <p style="font-size: 1.2rem; color: var(--text-muted); margin-bottom: var(--space-lg);">by ${art.artist}</p>
-                    <p style="font-size: 1.8rem; font-weight: 500; margin-bottom: var(--space-lg);">${fp(cp(art.price))}</p>
+                    
+                    <div id="product-price-display" style="font-size: 2.2rem; font-weight: 600; color: var(--accent-color); margin-bottom: var(--space-md);">
+                        ${hasVariants ? 'Starting from ' : ''}${fp(cp(currentPrice))}
+                    </div>
+
+                    <!-- Frame Selection -->
+                    <div class="frame-selector" style="margin-bottom: var(--space-lg);">
+                        <span style="display: block; font-weight: 600; margin-bottom: 12px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted);">Choose a Frame</span>
+                        <div class="frame-selector-group" id="product-frame-group">
+                            <div class="frame-card ${(!selectedFrame || selectedFrame === 'none') ? 'active' : ''}" onclick="window.appInstance.selectFrame('none')" data-frame="none">
+                                <div class="frame-preview-thumb">
+                                    <span style="font-size: 0.6rem; color: #999; text-transform: uppercase;">None</span>
+                                </div>
+                                <span class="frame-name">No Frame</span>
+                            </div>
+                            <div class="frame-card ${selectedFrame === 'brown' ? 'active' : ''}" onclick="window.appInstance.selectFrame('brown')" data-frame="brown">
+                                <img src="images/frame-brown.png" class="frame-preview-thumb">
+                                <span class="frame-name">Brown Frame</span>
+                            </div>
+                            <div class="frame-card ${selectedFrame === 'golden' ? 'active' : ''}" onclick="window.appInstance.selectFrame('golden')" data-frame="golden">
+                                <img src="images/frame-golden.png" class="frame-preview-thumb">
+                                <span class="frame-name">Golden Frame</span>
+                            </div>
+                            ${(window.appInstance.frames || []).map(frame => `
+                                <div class="frame-card ${selectedFrame === frame.id ? 'active' : ''}" onclick="window.appInstance.selectFrame('${frame.id}')" data-frame="${frame.id}">
+                                    <img src="${frame.url}" class="frame-preview-thumb">
+                                    <span class="frame-name">${frame.name} Frame</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <button class="wall-toggle-btn" id="wall-view-toggle" onclick="window.appInstance.toggleWallView()">
+                            <span class="icon">🏠</span>
+                            <span>View on Wall</span>
+                        </button>
+                    </div>
+
+                    <!-- Size Selection -->
+                    ${art.variants ? `
+                    <div class="size-selector" style="margin-bottom: var(--space-lg);">
+                        <span style="display: block; font-weight: 600; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Select Size (Inches)</span>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                            ${(art.variants || []).map((v, i) => `
+                                <button class="size-opt ${(selected && selected.size === v.size) || (!selected && i === 0) ? 'active' : ''} ${v.stock === 0 ? 'out' : ''}" 
+                                        onclick="window.appInstance.selectSize('${v.size}', ${v.price}, ${v.stock}, this)"
+                                        ${v.stock === 0 ? 'disabled' : ''}
+                                        style="padding: 10px 20px; border: 1px solid var(--border-color); background: ${(selected && selected.size === v.size) || (!selected && i === 0) ? 'var(--text-color)' : 'transparent'}; color: ${(selected && selected.size === v.size) || (!selected && i === 0) ? 'var(--white)' : 'var(--text-color)'}; cursor: ${v.stock === 0 ? 'not-allowed' : 'pointer'}; border-radius: 4px; font-size: 0.9rem; transition: all 0.2s; position: relative; opacity: ${v.stock === 0 ? '0.5' : '1'};">
+                                    ${v.size}
+                                    ${v.stock === 0 ? '<span style="position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; font-size: 0.6rem; padding: 2px 5px; border-radius: 10px;">OUT</span>' : ''}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
                     
                     <p class="product-description" style="margin-bottom: var(--space-lg); line-height: 1.6; color: var(--text-color);">
                         ${t('description')}: Experience the timeless beauty of <strong>${art.title}</strong> by the legendary <strong>${art.artist}</strong>. This masterwork is a testament to the artist's unique vision and technical prowess.
                     </p>
 
-                    <!-- Frame Selection -->
-                    <div class="frame-selector">
-                        <span class="frame-selector-label">Choose Frame</span>
-                        <div class="frame-options">
-                            <div class="frame-opt active" data-frame="none" onclick="window.appInstance.selectFrame('none')">
-                                <div class="frame-preview preview-none"></div>
-                                <span class="frame-name">No Frame</span>
-                            </div>
-                            <div class="frame-opt" data-frame="brown" onclick="window.appInstance.selectFrame('brown')">
-                                <div class="frame-preview preview-brown"></div>
-                                <span class="frame-name">Brown Frame</span>
-                            </div>
-                            <div class="frame-opt" data-frame="gold" onclick="window.appInstance.selectFrame('gold')">
-                                <div class="frame-preview preview-gold"></div>
-                                <span class="frame-name">Golden Frame</span>
-                            </div>
-                        </div>
-                    </div>
 
                     <div style="margin-bottom: var(--space-lg);">
                         ${art.stock === 0 
@@ -315,10 +354,10 @@ export const pages = {
                     
                     <div style="display: flex; flex-direction: column; gap: var(--space-md); margin-bottom: var(--space-xl);">
                         <button id="add-to-cart-btn" class="btn btn-primary" style="padding: 1.2rem; display: flex; align-items: center; justify-content: center; gap: 10px;" 
-                                onclick="window.appInstance.addToCart('${art.id}', window.currentFrame || 'none')"
-                                ${art.stock === 0 ? 'disabled style="background: #ccc; cursor: not-allowed;"' : ''}>
+                                onclick="window.appInstance.addToCart('${art.id}', window.currentFrame || 'none', window.appInstance?.selectedVariants['${art.id}']?.size || '${currentSize}', window.appInstance?.selectedVariants['${art.id}']?.price || ${currentPrice})"
+                                ${currentStock === 0 ? 'disabled style="background: #ccc; cursor: not-allowed;"' : ''}>
                             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                            ${art.stock === 0 ? t('outOfStock') : t('addToCart')}
+                            <span id="cart-btn-text">${currentStock === 0 ? t('outOfStock') : t('addToCart')}</span>
                         </button>
                         <button class="btn-whatsapp" onclick="window.appInstance.contactWhatsApp('${art.id}')">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.438 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.438-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.174.198-.298.298-.497.099-.198.05-.372-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.501-.669-.51l-.57-.011c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
@@ -384,7 +423,9 @@ export const pages = {
 
                     <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
                         ${reviews.filter(r => r.productId === id).length > 0 ? 
-                            reviews.filter(r => r.productId === id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(review => `
+                            reviews.filter(r => r.productId === id)
+                                .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+                                .map(review => `
                                 <div style="border-bottom: 1px solid #eee; padding-bottom: var(--space-lg);">
                                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;">
                                         <div>
@@ -430,13 +471,16 @@ export const pages = {
             <h1 class="section-title" style="text-align: left;">Your Cart</h1>
             <div class="cart-grid">
                 <div class="cart-items">
-                    ${items.map(item => `
+                    ${(items || []).map(item => `
                         <div style="display: flex; gap: var(--space-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-md); margin-bottom: var(--space-md);">
                             <img src="${item.image}" alt="${item.title}" style="width: 100px; height: 100px; object-fit: cover;">
                             <div style="flex: 1;">
                                 <h3 style="font-size: 1.2rem; margin-bottom: 0.2rem;">${item.title}</h3>
                                 <p style="color: var(--text-muted); font-size: 0.9rem;">${item.artist}</p>
-                                ${item.frame && item.frame !== 'none' ? `<p style="color: var(--accent-color); font-size: 0.8rem; margin-top: 5px; font-weight: 500;">Frame: ${item.frame.charAt(0).toUpperCase() + item.frame.slice(1)}</p>` : ''}
+                                <div style="display: flex; gap: 10px; margin-top: 5px;">
+                                    ${item.size ? `<span style="background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500;">Size: ${item.size}</span>` : ''}
+                                    ${item.frame && item.frame !== 'none' ? `<span style="background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; color: var(--accent-color);">Frame: ${item.frame.charAt(0).toUpperCase() + item.frame.slice(1)}</span>` : ''}
+                                </div>
                                 <button onclick="window.removeFromCart('${item.id}')" style="color: #d9534f; font-size: 0.8rem; margin-top: var(--space-sm); text-decoration: underline;">Remove</button>
                             </div>
                             <div style="text-align: right;">
@@ -514,7 +558,7 @@ export const pages = {
                     <h3 style="margin-bottom: var(--space-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-sm);">Order Summary</h3>
                     
                     <div style="margin-bottom: var(--space-lg); max-height: 300px; overflow-y: auto;">
-                        ${cart.items.map(item => `
+                        ${(cart.items || []).map(item => `
                             <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem;">
                                 <span>${item.title} x ${item.quantity} ${item.frame !== 'none' ? `<br><small style="color: var(--accent-color);">Frame: ${item.frame}</small>` : ''}</span>
                                 <span>${fp(cp(item.price * item.quantity))}</span>
@@ -581,22 +625,25 @@ export const pages = {
         <section class="container section-padding" style="padding-top: 120px; min-height: 60vh;">
             <h1 class="section-title" style="text-align: left;">Your Wishlist</h1>
             <div class="product-grid">
-                ${items.map(item => `
-                    <article class="product-card" style="position: relative;">
-                        <div class="wishlist-btn active" onclick="window.removeFromWishlist('${item.id}')">
+                ${items.map(item => {
+                    const hasVariants = item.variants && item.variants.length > 0;
+                    const startPrice = hasVariants ? Math.min(...item.variants.map(v => v.price)) : item.price;
+                    return `
+                    <article class="product-card" style="position: relative;" data-link="product" data-param="${item.id}">
+                        <div class="wishlist-btn active" onclick="event.stopPropagation(); window.removeFromWishlist('${item.id}')">
                             ❤️
                         </div>
                         <div class="product-image-container">
-                            <img src="${item.image}" alt="${item.title}" class="product-image" loading="lazy">
+                            <img src="${item.image}" alt="${item.title}" class="product-image ${item.needsRotation ? 'rotate-90' : ''}">
                         </div>
                         <div class="product-info">
+                            <div class="product-artist">${item.artist}</div>
                             <h3 class="product-title">${item.title}</h3>
-                            <p class="product-artist">${item.artist}</p>
-                            <p class="product-price">$${item.price.toLocaleString()}</p>
-                            <button class="btn btn-primary" onclick="window.moveToCart('${item.id}')" style="width: 100%; margin-top: 1rem;">Move to Cart</button>
+                            <button class="btn btn-primary" onclick="event.stopPropagation(); window.moveToCart('${item.id}')" style="width: 100%; margin-top: 1rem;">Move to Cart</button>
                         </div>
                     </article>
-                `).join('')}
+                    `;
+                }).join('')}
             </div>
         </section>
         `;
@@ -620,6 +667,7 @@ export const pages = {
                 <button class="btn" style="border: 1px solid var(--border-color); background: transparent; color: var(--text-color);" onclick="window.appInstance.switchAdminTab('products')" id="tab-btn-products">Products</button>
                 <button class="btn" style="border: 1px solid var(--border-color); background: transparent; color: var(--text-color);" onclick="window.appInstance.switchAdminTab('coupons')" id="tab-btn-coupons">Coupons</button>
                 <button class="btn" style="border: 1px solid var(--border-color); background: transparent; color: var(--text-color);" onclick="window.appInstance.switchAdminTab('analytics')" id="tab-btn-analytics">Analytics</button>
+                <button class="btn" style="border: 1px solid var(--border-color); background: transparent; color: var(--text-color);" onclick="window.appInstance.switchAdminTab('frames')" id="tab-btn-frames">Frames</button>
             </div>
 
             <div id="admin-tab-orders">
@@ -712,6 +760,27 @@ export const pages = {
                             <canvas id="statusChart"></canvas>
                         </div>
                     </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="admin-tab-frames" style="display: none;">
+                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: var(--space-lg);">
+                    <div style="background: var(--white); padding: var(--space-lg); border-radius: 8px; border: 1px solid var(--border-color); height: fit-content;">
+                        <h3 style="margin-bottom: var(--space-md);">Upload Frame Style</h3>
+                        <form id="add-frame-form" onsubmit="event.preventDefault(); window.appInstance.addFrame(this); this.reset();" style="display: flex; flex-direction: column; gap: var(--space-md);">
+                            <input type="text" name="name" placeholder="Frame Name (e.g. Silver)" required style="padding: 10px; border: 1px solid var(--border-color);">
+                            <input type="file" name="file" accept="image/png" required style="padding: 10px; border: 1px solid var(--border-color);">
+                            <small style="color: var(--text-muted);">Please upload a PNG with a transparent center.</small>
+                            <button type="submit" class="btn btn-primary">Upload Frame</button>
+                        </form>
+                    </div>
+                    <div style="background: var(--white); padding: var(--space-lg); border-radius: 8px; border: 1px solid var(--border-color);">
+                        <h3 style="margin-bottom: var(--space-md);">Existing Frames</h3>
+                        <div id="admin-frames-container" class="admin-frames-grid">
+                            <p>Loading frames...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -739,20 +808,24 @@ export const pages = {
                             <option value="24*30">24*30</option>
                         </select>
                         <div style="display: flex; flex-direction: column; gap: 5px;">
-                            <label style="font-size: 0.8rem; color: var(--text-muted);">Media URLs (Images/Videos - Max 9)</label>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                <input type="url" class="prod-media" placeholder="Media 1 (Primary)" required style="padding: 10px; border: 1px solid var(--border-color); grid-column: 1 / -1;">
-                                <input type="url" class="prod-media" placeholder="Media 2" style="padding: 10px; border: 1px solid var(--border-color);">
-                                <input type="url" class="prod-media" placeholder="Media 3" style="padding: 10px; border: 1px solid var(--border-color);">
-                                <input type="url" class="prod-media" placeholder="Media 4" style="padding: 10px; border: 1px solid var(--border-color);">
-                                <input type="url" class="prod-media" placeholder="Media 5" style="padding: 10px; border: 1px solid var(--border-color);">
-                                <input type="url" class="prod-media" placeholder="Media 6" style="padding: 10px; border: 1px solid var(--border-color);">
-                                <input type="url" class="prod-media" placeholder="Media 7" style="padding: 10px; border: 1px solid var(--border-color);">
-                                <input type="url" class="prod-media" placeholder="Media 8" style="padding: 10px; border: 1px solid var(--border-color);">
-                                <input type="url" class="prod-media" placeholder="Media 9" style="padding: 10px; border: 1px solid var(--border-color);">
+                            <label style="font-size: 0.8rem; color: var(--text-muted);">Primary Image (Upload & Crop)</label>
+                            <input type="file" id="prod-image-upload" accept="image/*" style="padding: 10px; border: 1px solid var(--border-color);" onchange="window.appInstance.handleImageSelect(event)">
+                            
+                            <div class="cropper-container-wrapper" id="cropper-wrapper" style="display: none;">
+                                <img id="cropper-image" src="">
                             </div>
+                            <button type="button" id="crop-btn" class="btn btn-secondary" style="display: none;" onclick="window.appInstance.performCrop()">Crop Image</button>
+                            <input type="hidden" id="prod-primary-image-url">
                         </div>
-                        <input type="number" id="prod-stock" placeholder="Stock Quantity" required min="1" value="1" style="padding: 10px; border: 1px solid var(--border-color);">
+
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label style="font-size: 0.8rem; color: var(--text-muted);">Variants (Size, Price, Stock)</label>
+                            <div id="variant-rows-container">
+                                <!-- Dynamic rows go here -->
+                            </div>
+                            <button type="button" class="btn" style="border: 1px dashed var(--border-color); background: #f9f9f9; color: var(--text-color);" onclick="window.appInstance.addVariantRow()">+ Add Variant</button>
+                        </div>
+                        <input type="number" id="prod-stock" placeholder="Default Stock (if no variants)" min="0" value="10" style="padding: 10px; border: 1px solid var(--border-color);">
                         <label style="display: flex; align-items: center; gap: 10px; color: var(--text-color);">
                             <input type="checkbox" id="prod-featured"> Featured Product
                         </label>
@@ -777,7 +850,7 @@ export const pages = {
                 <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
                     <button class="btn btn-primary" data-link="home">Go to Home</button>
                     <button class="btn" style="border: 1px solid var(--text-color); background: transparent; color: var(--text-color);" data-link="my-orders">View Orders</button>
-                <button class="btn" style="background: #333; color: white;" onclick="window.appInstance.downloadInvoice()">Download Invoice (Varma Gallery)</button>
+                <button class="btn" style="background: #333; color: white;" onclick="window.appInstance.downloadInvoice()">Download Invoice (AuraArt Gallery)</button>
                 </div>
             </div>
         </section>
@@ -840,7 +913,7 @@ export const pages = {
                         Raja Ravi Varma passed away in 1906, but his impact remains immeasurable. In 1904, on behalf of King-Emperor Edward VII, the Viceroy Lord Curzon awarded him the <strong>Kaiser-i-Hind Gold Medal</strong>. Today, his paintings are considered national treasures, housed in prestigious galleries such as the National Gallery of Modern Art and the Laxmi Vilas Palace.
                     </p>
                     <p style="color: var(--text-muted); line-height: 1.8;">
-                        Varma Gallery is proud to carry forward his name and his commitment to bringing the beauty of fine art into the modern home.
+                        AuraArt Gallery is proud to carry forward his legacy and his commitment to bringing the beauty of fine art into the modern home.
                     </p>
                 </div>
 
@@ -852,3 +925,4 @@ export const pages = {
         </section>
     `
 };
+

@@ -1,4 +1,4 @@
-export class Toast {
+﻿export class Toast {
     static show(message, type = 'success') {
         const container = document.getElementById('toast-container') || this.createContainer();
         
@@ -34,3 +34,4 @@ export class Toast {
         return container;
     }
 }
+

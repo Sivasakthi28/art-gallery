@@ -1,5 +1,6 @@
 import { pages, renderProductCard } from './pages.js';
 import { cart } from './cart.js';
+import { Toast } from './toast.js';
 import { wishlist } from './wishlist.js';
 import { initProducts, artworks, initReviews, reviews } from './products.js';
 import { recent } from './recent.js';
@@ -9,7 +10,7 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, on
     from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 import { getFirestore, collection, addDoc, doc, setDoc, getDoc, deleteDoc, query, where, getDocs, orderBy, updateDoc, onSnapshot }
     from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL }
+import { getStorage, ref, uploadBytes, uploadString, getDownloadURL }
     from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
 
 const firebaseConfig = {
@@ -34,7 +35,12 @@ class App {
         this.activeAdminTab = 'orders';
         this.analyticsData = null;
         this.appliedCoupon = null;
+        this.appliedCoupon = null;
         this.isProcessingPayment = false;
+        
+        // Advanced Features State
+        this.frames = [];
+        this.cropper = null;
         
         // Slider State
         this.sliderIndex = 0;
@@ -74,6 +80,7 @@ class App {
             }
         };
 
+        this.selectedVariants = {}; // Track selected variants per product
         this.init();
     }
 
@@ -89,6 +96,12 @@ class App {
         cart.setDatabase(db);
         wishlist.setDatabase(db);
         this.bindGlobalEvents();
+        window.addEventListener('hashchange', () => {
+            console.log('🔗 Hash changed, re-routing...');
+            this.handleRoute();
+        });
+
+        this.initFrames();
         this.handleRoute();
 
         // ======================
@@ -251,9 +264,13 @@ class App {
         window.moveToCart = (id) => {
             const item = wishlist.items.find(i => i.id === id);
             if (item) {
-                cart.addItem(item);
+                cart.addItem(item, 'Standard', 'none');
                 wishlist.removeItem(id);
             }
+        };
+
+        window.selectSize = (size, price, stock, el) => {
+            this.selectSize(size, price, stock, el);
         };
 
         window.payNow = async () => {
@@ -301,7 +318,7 @@ class App {
                 key: "rzp_test_ShLcmmo3kCtpxZ", // IMPORTANT: Never use your Key Secret here!
                 amount: Math.round(totalAmount * 100), // Amount in paise (integer)
                 currency: "INR", // INR is strictly required for UPI methods
-                name: "Varma Gallery",
+                name: "AuraArt Gallery",
                 description: "Purchase of Artworks",
                 prefill: {
                     name: this.user.displayName || "Art Collector",
@@ -328,12 +345,22 @@ class App {
 
                         // Reduce Stock
                         for (const item of cart.items) {
-                            const artRef = doc(db, "products", item.id);
-                            const artDoc = artworks.find(a => a.id === item.id);
+                            const artRef = doc(db, "products", item.productId || item.id);
+                            const artDoc = artworks.find(a => a.id === (item.productId || item.id));
                             if (artDoc) {
-                                await updateDoc(artRef, {
-                                    stock: Math.max(0, (artDoc.stock || 1) - item.quantity)
-                                });
+                                if (artDoc.variants && item.size) {
+                                    const updatedVariants = artDoc.variants.map(v => {
+                                        if (v.size === item.size) {
+                                            return { ...v, stock: Math.max(0, v.stock - item.quantity) };
+                                        }
+                                        return v;
+                                    });
+                                    await updateDoc(artRef, { variants: updatedVariants });
+                                } else {
+                                    await updateDoc(artRef, {
+                                        stock: Math.max(0, (artDoc.stock || 1) - item.quantity)
+                                    });
+                                }
                             }
                         }
 
@@ -398,16 +425,40 @@ class App {
         };
     }
 
+    async initFrames() {
+        try {
+            onSnapshot(collection(db, "frames"), (snapshot) => {
+                this.frames = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("🖼️ Frames loaded:", this.frames);
+                if (this.currentRoute === 'product') {
+                    this.render(); // Re-render product page to show new frames
+                }
+            });
+        } catch (e) {
+            console.error("Error loading frames:", e);
+        }
+    }
+
     // ======================
     // ROUTING
     // ======================
     bindGlobalEvents() {
+        console.log('🔗 Binding global events...');
         document.addEventListener('click', (e) => {
             const linkElement = e.target.closest('[data-link]');
             if (linkElement) {
-                e.preventDefault();
+                // If we clicked an interactive element that handles its own action, ignore
+                if (e.target.closest('.wishlist-btn, .quick-add, .nav-select, button:not([data-link])')) {
+                    return; 
+                }
+
                 const route = linkElement.getAttribute('data-link');
                 const param = linkElement.getAttribute('data-param');
+                
+                console.log(`🚀 Click triggered: ${route}${param ? ' (' + param + ')' : ''}`);
+                
+                e.preventDefault();
+                e.stopPropagation();
                 this.navigate(route, param);
             }
         });
@@ -421,39 +472,54 @@ class App {
             }
         });
 
-        document.getElementById('cartBtn')?.addEventListener('click', () => {
+        document.getElementById('cartBtn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.navigate('cart');
         });
     }
 
     navigate(route, param = null) {
-        // Clear slider interval when navigating away from home
-        if (this.currentRoute === 'home' && route !== 'home') {
-            clearInterval(this.sliderInterval);
-        }
+        if (!route) return;
+        const newHash = param ? `#${route}/${param}` : `#${route}`;
+        console.log(`📍 Navigating to: ${newHash}`);
         
-        this.currentRoute = route;
-        this.currentParam = param;
-        this.render();
-        window.scrollTo(0, 0);
-
-        document.querySelectorAll('.nav-links a').forEach(a => {
-            a.classList.remove('active');
-            if (a.getAttribute('data-link') === route) {
-                a.classList.add('active');
-            }
-        });
+        // Updating hash will trigger the hashchange listener and handleRoute()
+        if (window.location.hash === newHash) {
+            this.handleRoute(); // Force re-render if hash is same
+        } else {
+            window.location.hash = newHash;
+        }
     }
 
     handleRoute() {
+        const hash = window.location.hash.slice(1);
+        console.log('🔗 Handling initial route for hash:', hash);
+        if (hash) {
+            const parts = hash.split('/');
+            // Handle #product/art2 format
+            if (parts[0] === 'product' && parts[1]) {
+                this.currentRoute = 'product';
+                this.currentParam = parts[1];
+            } else {
+                this.currentRoute = parts[0] || 'home';
+                this.currentParam = null;
+            }
+        } else {
+            this.currentRoute = 'home';
+            this.currentParam = null;
+        }
         this.render();
     }
 
     render() {
+        window.scrollTo(0, 0);
+        console.log(`🖼️ Rendering Page: [${this.currentRoute}] with param: [${this.currentParam}]`);
+        
         // Toggle header visibility mode based on route
         const header = document.getElementById('header');
+        if (!header) return;
+
         if (this.currentRoute === 'home') {
-            this.initSlider();
             header.classList.add('on-hero');
         } else {
             header.classList.remove('on-hero');
@@ -463,6 +529,21 @@ class App {
                 setTimeout(() => this.selectFrame(window.currentFrame), 0);
             }
         }
+
+        // Clear slider interval if not on home
+        if (this.currentRoute !== 'home' && this.sliderInterval) {
+            console.log('⏸️ Clearing slider interval');
+            clearInterval(this.sliderInterval);
+            this.sliderInterval = null;
+        }
+
+        // Update active nav links
+        document.querySelectorAll('.nav-links a').forEach(a => {
+            a.classList.remove('active');
+            if (a.getAttribute('data-link') === this.currentRoute) {
+                a.classList.add('active');
+            }
+        });
 
         const pageRenderer = pages[this.currentRoute] || pages.home;
         this.appElement.innerHTML = pageRenderer(this.currentParam);
@@ -474,6 +555,11 @@ class App {
         if (this.currentRoute === 'product' && this.currentParam) {
             const art = artworks.find(a => String(a.id) === String(this.currentParam));
             if (art) {
+                // Requirement 1: Default to first variant if nothing selected yet
+                if (art.variants && art.variants.length > 0 && !this.selectedVariants[art.id]) {
+                    const def = art.variants[0];
+                    this.selectedVariants[art.id] = { size: def.size, price: def.price, stock: def.stock };
+                }
                 recent.addProduct(art);
                 setTimeout(() => this.initImageZoom(), 100);
             }
@@ -522,7 +608,7 @@ class App {
             }
 
             const order = querySnapshot.docs[0].data();
-            let itemsHtml = order.items.map(item => `<li>${item.title} x ${item.quantity} ${item.frame && item.frame !== 'none' ? `[${item.frame.charAt(0).toUpperCase() + item.frame.slice(1)} Frame]` : ''} - $${item.price.toLocaleString()}</li>`).join('');
+            let itemsHtml = (order.items || []).map(item => `<li>${item.title} x ${item.quantity} ${item.frame && item.frame !== 'none' ? `[${item.frame.charAt(0).toUpperCase() + item.frame.slice(1)} Frame]` : ''} - $${item.price.toLocaleString()}</li>`).join('');
 
             container.innerHTML = `
                 <div style="text-align: left; background: #f9f9f9; padding: var(--space-md); border-radius: 8px;">
@@ -823,6 +909,7 @@ class App {
         document.getElementById("admin-tab-products").style.display = "none";
         document.getElementById("admin-tab-analytics").style.display = "none";
         document.getElementById("admin-tab-coupons").style.display = "none";
+        document.getElementById("admin-tab-frames").style.display = "none";
 
         document.getElementById("tab-btn-orders").classList.remove("btn-primary");
         document.getElementById("tab-btn-products").classList.remove("btn-primary");
@@ -833,10 +920,13 @@ class App {
         document.getElementById("tab-btn-products").style.background = "transparent";
         document.getElementById("tab-btn-analytics").style.background = "transparent";
         document.getElementById("tab-btn-coupons").style.background = "transparent";
+        document.getElementById("tab-btn-frames").style.background = "transparent";
+        
         document.getElementById("tab-btn-orders").style.color = "var(--text-color)";
         document.getElementById("tab-btn-products").style.color = "var(--text-color)";
         document.getElementById("tab-btn-analytics").style.color = "var(--text-color)";
         document.getElementById("tab-btn-coupons").style.color = "var(--text-color)";
+        document.getElementById("tab-btn-frames").style.color = "var(--text-color)";
 
         document.getElementById(`admin-tab-${tabName}`).style.display = "block";
         document.getElementById(`tab-btn-${tabName}`).classList.add("btn-primary");
@@ -848,6 +938,7 @@ class App {
         }
         if (tabName === 'products') this.fetchAdminProducts();
         if (tabName === 'coupons') this.fetchCoupons();
+        if (tabName === 'frames') this.fetchAdminFrames();
     }
 
     // ======================
@@ -1053,35 +1144,42 @@ class App {
                 submitBtn.disabled = true;
 
                 try {
-                    const mediaInputs = document.querySelectorAll('.prod-media');
-                    const media = [];
-                    mediaInputs.forEach(input => {
-                        const url = input.value.trim();
-                        if (url) {
-                            const isVideo = url.toLowerCase().endsWith('.mp4') || url.toLowerCase().endsWith('.webm');
-                            media.push({
-                                type: isVideo ? 'video' : 'image',
-                                url: url
-                            });
-                        }
-                    });
-
-                    if (media.length === 0) {
-                        alert("Please provide at least one media URL.");
+                    const primaryImageUrl = document.getElementById('prod-primary-image-url').value;
+                    if (!primaryImageUrl && !isEditing) {
+                        alert("Please upload and crop a primary image.");
                         submitBtn.disabled = false;
                         submitBtn.innerText = isEditing ? "Update Product" : "Save Product";
                         return;
+                    }
+                    
+                    const media = [];
+                    if (primaryImageUrl) {
+                        media.push({ type: 'image', url: primaryImageUrl });
+                    } else if (isEditing) {
+                        // Fallback to existing image if not uploading a new one during edit
+                        const existingProduct = artworks.find(a => a.id === window.editingProductId);
+                        if (existingProduct) {
+                            media.push({ type: 'image', url: existingProduct.image });
+                        }
+                    }
+
+                    // Handle Variants
+                    let variants = window.appInstance.getVariantsFromRows();
+                    if (!variants) {
+                        const { DEFAULT_VARIANTS } = await import('./products.js');
+                        variants = [...DEFAULT_VARIANTS];
                     }
 
                     const productData = {
                         title: document.getElementById('prod-title').value,
                         artist: document.getElementById('prod-artist').value,
-                        price: Number(document.getElementById('prod-price').value),
+                        price: variants && variants.length > 0 ? variants[0].price : Number(document.getElementById('prod-price').value),
                         category: document.getElementById('prod-category').value,
                         dimensions: document.getElementById('prod-dimensions').value,
                         media: media, 
                         image: media[0].url, 
                         stock: Number(document.getElementById('prod-stock').value),
+                        variants: variants,
                         featured: document.getElementById('prod-featured').checked,
                         updatedAt: new Date().toISOString()
                     };
@@ -1132,15 +1230,14 @@ class App {
         document.getElementById('prod-dimensions').value = art.dimensions || '';
         document.getElementById('prod-stock').value = art.stock || 0;
         document.getElementById('prod-featured').checked = !!art.featured;
-
-        // Pre-fill media
-        const mediaInputs = document.querySelectorAll('.prod-media');
-        mediaInputs.forEach(input => input.value = ''); // Clear first
-        
-        const mediaUrls = art.media ? art.media.map(m => m.url) : [art.image];
-        mediaUrls.forEach((url, i) => {
-            if (mediaInputs[i]) mediaInputs[i].value = url;
-        });
+        // Pre-fill variants
+        const variantsContainer = document.getElementById('variant-rows-container');
+        if (variantsContainer) variantsContainer.innerHTML = '';
+        if (art.variants && art.variants.length > 0) {
+            art.variants.forEach(v => {
+                this.addVariantRow(v.size, v.price, v.stock);
+            });
+        }
 
         modal.style.display = 'flex';
     }
@@ -1157,6 +1254,21 @@ class App {
         if (title) title.innerText = "Add New Product";
         if (submitBtn) submitBtn.innerText = "Save Product";
         
+        const cropperWrapper = document.getElementById("cropper-wrapper");
+        const cropBtn = document.getElementById("crop-btn");
+        const primaryImgUrl = document.getElementById("prod-primary-image-url");
+        if (cropperWrapper) cropperWrapper.style.display = 'none';
+        if (cropBtn) cropBtn.style.display = 'none';
+        if (primaryImgUrl) primaryImgUrl.value = '';
+        
+        const variantsContainer = document.getElementById('variant-rows-container');
+        if (variantsContainer) variantsContainer.innerHTML = '';
+        
+        if (this.cropper) {
+            this.cropper.destroy();
+            this.cropper = null;
+        }
+
         if (form) form.reset();
         if (closeModal) modal.style.display = 'none';
     }
@@ -1205,22 +1317,16 @@ class App {
         return this.translations[this.language][key] || key;
     }
 
-    convertPrice(priceUSD) {
-        if (this.currency === 'INR') return priceUSD * 83;
-        return priceUSD;
+    convertPrice(price) {
+        // Source of truth is now INR (₹250 in DB = ₹250 on screen)
+        if (this.currency === 'USD') return price / 83;
+        return price;
     }
 
     formatPrice(price) {
-        if (this.currency === 'INR') {
-            return new Intl.NumberFormat('en-IN', {
-                style: 'currency',
-                currency: 'INR',
-                maximumFractionDigits: 0
-            }).format(price);
-        }
-        return new Intl.NumberFormat('en-US', {
+        return new Intl.NumberFormat(this.currency === 'INR' ? 'en-IN' : 'en-US', {
             style: 'currency',
-            currency: 'USD',
+            currency: this.currency || 'INR',
             maximumFractionDigits: 0
         }).format(price);
     }
@@ -1240,16 +1346,184 @@ class App {
     // ======================
     // ACTIONS
     // ======================
-    addToCart(id, frame = 'none') {
+    selectFrame(type) {
+        const masterWrapper = document.getElementById('frame-master-wrapper');
+        const innerContainer = document.getElementById('artwork-inner-container');
+        if (!masterWrapper || !innerContainer) return;
+
+        if (this.currentRoute === 'product' && this.currentParam) {
+            localStorage.setItem(`frame_${this.currentParam}`, type);
+        }
+
+        const artworkImg = document.querySelector('.zoom-image');
+        const applyRatio = () => {
+            if (artworkImg && type !== 'none') {
+                const ratio = artworkImg.naturalWidth / artworkImg.naturalHeight;
+                if (ratio) {
+                    masterWrapper.style.aspectRatio = ratio.toString();
+                    masterWrapper.style.width = 'auto';
+                    masterWrapper.style.height = '500px';
+                }
+            } else {
+                masterWrapper.style.aspectRatio = '';
+                masterWrapper.style.width = '100%';
+                masterWrapper.style.height = '500px';
+            }
+        };
+
+        if (type === 'none') {
+            applyRatio();
+            masterWrapper.style.backgroundImage = 'none';
+            masterWrapper.style.padding = '0';
+            innerContainer.style.top = '0';
+            innerContainer.style.left = '0';
+            innerContainer.style.width = '100%';
+            innerContainer.style.height = '100%';
+            masterWrapper.classList.remove('has-frame');
+        } else {
+            applyRatio();
+            if (artworkImg && !artworkImg.complete) {
+                artworkImg.onload = applyRatio;
+            }
+            masterWrapper.classList.add('has-frame');
+            
+            // Support both dynamic frames from Firestore and legacy local frames
+            const frameObj = this.frames.find(f => f.id === type);
+            const frameUrl = frameObj ? frameObj.url : `images/frame-${type}.png`;
+            masterWrapper.style.backgroundImage = `url('${frameUrl}')`;
+            
+            // Standard 12% padding for all frames
+            innerContainer.style.top = '12%';
+            innerContainer.style.left = '12%';
+            innerContainer.style.width = '76%';
+            innerContainer.style.height = '76%';
+            innerContainer.style.position = 'absolute';
+        }
+
+        // Highlight active frame card
+        document.querySelectorAll('.frame-card').forEach(card => {
+            if (card.dataset.frame === type) {
+                card.classList.add('active');
+            } else {
+                card.classList.remove('active');
+            }
+        });
+    }
+
+    toggleWallView() {
+        const zoomContainer = document.querySelector('.zoom-container');
+        const toggleBtn = document.getElementById('wall-view-toggle');
+        if (!zoomContainer || !toggleBtn) return;
+
+        zoomContainer.classList.toggle('wall-active');
+        toggleBtn.classList.toggle('active');
+        
+        if (zoomContainer.classList.contains('wall-active')) {
+            toggleBtn.innerHTML = '<span class="icon">🖼️</span><span>Standard View</span>';
+        } else {
+            toggleBtn.innerHTML = '<span class="icon">🏠</span><span>View on Wall</span>';
+        }
+    }
+
+    addToCart(id, frame = null, size = null, price = null) {
         const art = artworks.find(a => String(a.id) === String(id));
-        if (art && art.stock === 0) {
+        if (!art) return;
+
+        // Use provided size/price (from selection) or fallback to the first variant (Requirement 1 & 4)
+        const selected = this.selectedVariants[id];
+        const finalSize = size || (selected ? selected.size : (art.variants ? art.variants[0].size : 'Standard'));
+        const finalPrice = price || (selected ? selected.price : (art.variants ? art.variants[0].price : art.price));
+        
+        const variant = art.variants ? art.variants.find(v => v.size === finalSize) : null;
+        const finalStock = variant ? variant.stock : (art.stock || 0);
+
+        if (finalStock <= 0) {
             this.showToast("Sorry, this item is out of stock.", "error");
             return;
         }
+
+        // Store selected size and price in the cart item (Requirement 4)
+        const cartItem = { 
+            ...art, 
+            price: finalPrice,
+            selectedSize: finalSize,
+            selectedPrice: finalPrice
+        };
         
-        cart.addItem(art, frame);
-        this.showToast(`"${art.title}" added to cart!`, "success");
+        // Get currently selected frame from localStorage or fallback
+        const selectedFrame = frame || localStorage.getItem(`frame_${id}`) || 'none';
+        
+        cart.addItem(cartItem, finalSize, selectedFrame);
+        this.showToast(`"${art.title}" (${finalSize}) added to cart with ${selectedFrame} frame!`, "success");
         this.render();
+    }
+
+    selectSize(size, price, stock, el) {
+        if (!window.currentProduct) return;
+        const productId = window.currentProduct.id;
+        
+        // Store in app state
+        this.selectedVariants[productId] = { size, price, stock };
+
+        // Update UI Price
+        const priceDisplay = document.getElementById('product-price-display');
+        if (priceDisplay) {
+            priceDisplay.innerText = this.formatPrice(this.convertPrice(price));
+        }
+
+        // Update Active Button
+        document.querySelectorAll('.size-opt').forEach(btn => {
+            btn.style.background = 'transparent';
+            btn.style.color = 'var(--text-color)';
+            btn.classList.remove('active');
+        });
+        el.style.background = 'var(--text-color)';
+        el.style.color = 'var(--white)';
+        el.classList.add('active');
+
+        // Update Stock Status for Add to Cart button
+        const btn = document.getElementById('add-to-cart-btn');
+        const text = document.getElementById('cart-btn-text');
+        if (btn && text) {
+            if (stock === 0) {
+                btn.disabled = true;
+                btn.style.background = '#ccc';
+                btn.style.cursor = 'not-allowed';
+                text.innerText = this.t('outOfStock');
+            } else {
+                btn.disabled = false;
+                btn.style.background = 'var(--text-color)';
+                btn.style.cursor = 'pointer';
+                text.innerText = this.t('addToCart');
+            }
+        }
+    }
+
+    getStartingPrice(art) {
+        if (!art.variants || art.variants.length === 0) return art.price || 0;
+        return Math.min(...art.variants.map(v => v.price));
+    }
+
+    getRecommendations() {
+        const featured = artworks.filter(art => art.featured === true).slice(0, 6);
+        const featuredIds = featured.map(a => a.id);
+        return artworks.filter(a => !featuredIds.includes(a.id)).slice(0, 4);
+    }
+
+    getRatingData(id) {
+        const artReviews = reviews.filter(r => String(r.productId) === String(id));
+        if (artReviews.length === 0) return { avg: 0, count: 0 };
+        const sum = artReviews.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+        return { avg: sum / artReviews.length, count: artReviews.length };
+    }
+
+    showToast(msg, type = 'success') {
+        if (typeof Toast !== 'undefined' && Toast.show) {
+            Toast.show(msg, type);
+        } else {
+            console.log(`Toast (${type}): ${msg}`);
+            alert(msg);
+        }
     }
 
     // ======================
@@ -1326,6 +1600,172 @@ class App {
             alert("Error deleting.");
         }
     }
+
+    // ======================
+    // FRAMES MANAGEMENT
+    // ======================
+    fetchAdminFrames() {
+        const container = document.getElementById("admin-frames-container");
+        if (!container) return;
+        if (this.frames.length === 0) {
+            container.innerHTML = "<p>No custom frames uploaded yet.</p>";
+            return;
+        }
+        let html = '';
+        this.frames.forEach(frame => {
+            html += `
+                <div class="admin-frame-card">
+                    <img src="${frame.url}" alt="${frame.name}">
+                    <h4>${frame.name}</h4>
+                    <button class="delete-frame-btn" onclick="window.appInstance.deleteFrame('${frame.id}')" title="Delete Frame">×</button>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    async addFrame(form) {
+        const name = form.name.value;
+        const file = form.file.files[0];
+        if (!name || !file) return;
+
+        const btn = form.querySelector('button');
+        btn.innerText = "Uploading...";
+        btn.disabled = true;
+
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `frames/frame_${Date.now()}.${fileExt}`;
+            const storageRef = ref(storage, fileName);
+            await uploadBytes(storageRef, file);
+            const downloadUrl = await getDownloadURL(storageRef);
+
+            await addDoc(collection(db, "frames"), {
+                name: name,
+                url: downloadUrl,
+                createdAt: new Date().toISOString()
+            });
+
+            alert("Frame uploaded successfully!");
+            this.fetchAdminFrames();
+        } catch (e) {
+            console.error("Error uploading frame:", e);
+            alert("Failed to upload frame.");
+        } finally {
+            btn.innerText = "Upload Frame";
+            btn.disabled = false;
+            form.reset();
+        }
+    }
+
+    async deleteFrame(id) {
+        if (!confirm("Delete this frame? This might affect products using it.")) return;
+        try {
+            await deleteDoc(doc(db, "frames", id));
+            this.fetchAdminFrames();
+        } catch (e) {
+            console.error("Error deleting frame:", e);
+            alert("Failed to delete frame.");
+        }
+    }
+
+    // ======================
+    // CROPPER LOGIC
+    // ======================
+    handleImageSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const wrapper = document.getElementById("cropper-wrapper");
+        const img = document.getElementById("cropper-image");
+        const cropBtn = document.getElementById("crop-btn");
+
+        wrapper.style.display = "flex";
+        cropBtn.style.display = "inline-block";
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            img.src = e.target.result;
+            if (this.cropper) {
+                this.cropper.destroy();
+            }
+            this.cropper = new Cropper(img, {
+                viewMode: 1,
+                autoCropArea: 1,
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async performCrop() {
+        if (!this.cropper) return;
+        const btn = document.getElementById("crop-btn");
+        btn.innerText = "Cropping & Uploading...";
+        btn.disabled = true;
+
+        try {
+            const canvas = this.cropper.getCroppedCanvas({
+                maxWidth: 2000,
+                maxHeight: 2000
+            });
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            
+            const fileName = `products/cropped_${Date.now()}.jpg`;
+            const storageRef = ref(storage, fileName);
+            await uploadString(storageRef, dataUrl, 'data_url');
+            const downloadUrl = await getDownloadURL(storageRef);
+            
+            document.getElementById("prod-primary-image-url").value = downloadUrl;
+            alert("Image cropped and uploaded successfully!");
+            btn.style.display = "none";
+            document.getElementById("cropper-wrapper").style.display = "none";
+        } catch (e) {
+            console.error("Error cropping image:", e);
+            alert("Failed to crop image.");
+        } finally {
+            btn.innerText = "Crop Image";
+            btn.disabled = false;
+        }
+    }
+
+    // ======================
+    // DYNAMIC VARIANTS
+    // ======================
+    addVariantRow(size = '', price = '', stock = '10') {
+        const container = document.getElementById("variant-rows-container");
+        const row = document.createElement('div');
+        row.className = "variant-row";
+        row.innerHTML = `
+            <input type="text" placeholder="Size (e.g. 12x8)" value="${size}" class="v-size" required>
+            <input type="number" placeholder="Price ($)" value="${price}" class="v-price" required>
+            <input type="number" placeholder="Stock" value="${stock}" class="v-stock" required>
+            <button type="button" class="remove-variant-btn" onclick="window.appInstance.removeVariantRow(this)">×</button>
+        `;
+        container.appendChild(row);
+    }
+
+    removeVariantRow(btn) {
+        btn.closest('.variant-row').remove();
+    }
+
+    getVariantsFromRows() {
+        const container = document.getElementById("variant-rows-container");
+        if (!container) return null;
+        const rows = container.querySelectorAll('.variant-row');
+        if (rows.length === 0) return null;
+        
+        const variants = [];
+        rows.forEach(row => {
+            const size = row.querySelector('.v-size').value.trim();
+            const price = Number(row.querySelector('.v-price').value);
+            const stock = Number(row.querySelector('.v-stock').value);
+            if (size) {
+                variants.push({ size, price, stock });
+            }
+        });
+        return variants.length > 0 ? variants : null;
+    }
+
 
     async applyCoupon(code) {
         const msg = document.getElementById('coupon-message');
@@ -1504,12 +1944,19 @@ class App {
                 display.innerHTML = `<video src="${item.url}" controls autoplay muted class="product-image ${art.needsRotation ? 'rotate-90' : ''}" style="height: 100%; width: 100%; object-fit: contain;"></video>`;
             } else {
                 display.innerHTML = `
-                    <div class="zoom-container" onclick="window.appInstance.openFullscreen('${item.url}')">
-                        <img src="${item.url}" alt="${art.title}" class="zoom-image ${art.needsRotation ? 'rotate-90' : ''}" style="height: 100%; width: 100%; object-fit: contain; transform: ${art.needsRotation ? 'rotate(90deg)' : 'none'}; opacity: 0; transition: opacity 0.3s;">
-                        <div class="zoom-hint">Roll over to zoom | Click for full view</div>
+                    <div class="zoom-container" onclick="window.appInstance.openFullscreen('${item.url}')" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fdfdfd;">
+                        <div id="frame-master-wrapper" class="artwork-frame-wrapper" style="position: relative; width: 100%; height: 500px; display: flex; align-items: center; justify-content: center; background-size: 100% 100%; background-position: center; transition: all 0.5s ease-in-out;">
+                            <div id="artwork-inner-container" style="position: relative; width: 100%; height: 100%; transition: all 0.5s ease-in-out; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                <img src="${item.url}" alt="${art.title}" class="zoom-image ${art.needsRotation ? 'rotate-90' : ''}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; box-shadow: 0 4px 15px rgba(0,0,0,0.1); z-index: 1; opacity: 0; transition: opacity 0.3s;">
+                            </div>
+                        </div>
+                        <div class="zoom-hint" style="z-index: 3;">Roll over to zoom | Click for full view</div>
                     </div>
                 `;
                 this.initImageZoom();
+                // Restore frame choice for new image
+                const savedFrame = localStorage.getItem(`frame_${artId}`) || 'none';
+                this.selectFrame(savedFrame);
             }
 
             // Fade in
@@ -1639,7 +2086,7 @@ class App {
                 filtered.sort((a, b) => b.price - a.price);
             }
 
-            grid.innerHTML = filtered.length
+            grid.innerHTML = (filtered && filtered.length > 0)
                 ? filtered.map(renderProductCard).join('')
                 : '<p style="text-align:center;">No artworks found</p>';
         };
@@ -1681,7 +2128,7 @@ class App {
                 a.artist.toLowerCase().includes(query)
             ).slice(0, 6);
 
-            if (matches.length > 0) {
+            if (matches && matches.length > 0) {
                 suggestionsContainer.innerHTML = matches.map(m => `
                     <div class="suggestion-item" onclick="window.appInstance.navigate('product', '${m.id}')">
                         <div class="suggestion-title">${highlightText(m.title, query)}</div>
@@ -1712,44 +2159,17 @@ class App {
         if (!art) return;
 
         const phone = "9342954479"; // Updated with user's actual number
+        const priceStr = this.formatPrice(this.convertPrice(art.price));
         const message = `Hi, I'm interested in the artwork:
 Title: ${art.title}
 Artist: ${art.artist}
-Price: $${art.price.toLocaleString()}
+Price: ${priceStr}
 Link: ${window.location.origin}${window.location.pathname}#product/${art.id}`;
 
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
     }
 
-    // FRAME SELECTION LOGIC
-    // ======================
-    selectFrame(frameType) {
-        const container = document.getElementById('main-media-display');
-        if (!container) return;
-
-        // Update UI state
-        window.currentFrame = frameType;
-        if (this.currentParam) {
-            localStorage.setItem(`frame_${this.currentParam}`, frameType);
-        }
-
-        // Apply visual frame
-        container.classList.remove('frame-none', 'frame-brown', 'frame-gold');
-        if (frameType !== 'none') {
-            container.classList.add(`frame-${frameType}`);
-        }
-
-        // Update active button
-        document.querySelectorAll('.frame-opt').forEach(opt => {
-            opt.classList.remove('active');
-            if (opt.dataset.frame === frameType) {
-                opt.classList.add('active');
-            }
-        });
-
-        console.log(`🖼️ Frame selected: ${frameType}`);
-    }
 
     // ======================
     // FEATURED SLIDER LOGIC

@@ -114,20 +114,30 @@ export class CartManager {
             .catch(error => console.error("Failed to send email receipt:", error));
     }
 
-    async addItem(artwork, frame = 'none') {
-        const itemWithFrame = { ...artwork, frame };
-        const cartItemId = `${artwork.id}_${frame}`; // Unique ID for product + frame combination
+    async addItem(artwork, size = 'Standard', frame = 'none') {
+        // Unique ID for product + size + frame combination
+        const cartItemId = `${artwork.id}_${size.replace(/\s+/g, '')}_${frame}`; 
+        const itemData = { 
+            ...artwork, 
+            id: cartItemId, 
+            productId: artwork.id, 
+            size, 
+            frame, 
+            quantity: 1 
+        };
 
         if (this.userId && this.db) {
             const existingItem = this.items.find(item => item.id === cartItemId);
-            const newQty = existingItem ? existingItem.quantity + 1 : 1;
-            await setDoc(doc(this.db, "users", this.userId, "cart", cartItemId), { ...itemWithFrame, id: cartItemId, productId: artwork.id, quantity: newQty });
+            if (existingItem) {
+                itemData.quantity = existingItem.quantity + 1;
+            }
+            await setDoc(doc(this.db, "users", this.userId, "cart", cartItemId), itemData);
         } else {
             const existingItem = this.items.find(item => item.id === cartItemId);
             if (existingItem) {
                 existingItem.quantity += 1;
             } else {
-                this.items.push({ ...itemWithFrame, id: cartItemId, productId: artwork.id, quantity: 1 });
+                this.items.push(itemData);
             }
             this.saveGuestCart();
         }
@@ -182,3 +192,4 @@ export class CartManager {
 }
 
 export const cart = new CartManager();
+

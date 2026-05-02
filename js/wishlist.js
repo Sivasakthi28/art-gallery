@@ -1,4 +1,4 @@
-import { doc, setDoc, collection, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
+﻿import { doc, setDoc, collection, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 import { Toast } from "./toast.js";
 
 export class WishlistManager {
@@ -69,3 +69,4 @@ export class WishlistManager {
 }
 
 export const wishlist = new WishlistManager();
+
