@@ -13,6 +13,7 @@ export const renderStars = (rating) => {
 const t = (key) => window.appInstance ? window.appInstance.t(key) : key;
 const cp = (p) => window.appInstance ? window.appInstance.convertPrice(p) : p;
 const fp = (p) => window.appInstance ? window.appInstance.formatPrice(p) : `$${p}`;
+const getFinalPrice = (price) => price * 2;
 
 export const renderSliderCard = (art) => {
     return `
@@ -23,7 +24,7 @@ export const renderSliderCard = (art) => {
             <h2 class="slider-title">${art.title}</h2>
             <p class="slider-artist">by ${art.artist}</p>
             <div class="slider-footer">
-                <span class="slider-price">${fp(cp(art.price))}</span>
+                <span class="slider-price">${fp(cp(getFinalPrice(art.price)))}</span>
                 <button class="btn btn-primary slider-view-btn" data-link="product" data-param="${art.id}">View Product</button>
             </div>
         </div>
@@ -69,7 +70,7 @@ export const renderProductCard = (art) => {
             <h3 class="product-title">${art.title}</h3>
             <p class="product-artist">${art.artist}</p>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                <p class="product-price">${art.variants ? 'Starting from ' : ''}${fp(cp(startPrice))}</p>
+                <p class="product-price">${art.variants ? 'Starting from ' : ''}${fp(cp(getFinalPrice(startPrice)))}</p>
                 <div style="color: #f39c12; font-size: 0.85rem;">
                     ${renderStars(ratingData.avg)}
                 </div>
@@ -83,7 +84,7 @@ export const renderProductCard = (art) => {
 export const pages = {
     home: () => `
         <section class="hero" id="home">
-            <video class="hero-video" autoplay muted loop playsinline webkit-playsinline poster="images/wall-bg.png" style="background-color: #000;">
+            <video class="hero-video" autoplay muted loop playsinline webkit-playsinline>
                 <source src="https://www.pexels.com/download/video/29151073/" type="video/mp4">
             </video>
             <div class="hero-overlay"></div>
@@ -137,7 +138,7 @@ export const pages = {
         ` : ''}
 
         <section id="about" class="section-padding" style="background-color: var(--white);">
-            <div class="container" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-xl); align-items: center;">
+            <div class="container about-grid">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md);">
                     <div style="text-align: center;">
                         <img src="images/varma_portrait.png" alt="Raja Ravi Varma" style="width: 100%; height: 300px; object-fit: cover; box-shadow: var(--shadow-md); border-radius: 4px; margin-bottom: 8px;">
@@ -150,7 +151,7 @@ export const pages = {
                 </div>
                 <div>
                     <h2 class="section-title" style="text-align: left; margin-bottom: var(--space-md);">The Legacy of Raja Ravi Varma</h2>
-                    <p style="color: var(--text-muted); margin-bottom: var(--space-md); line-height: 1.6;">Raja Ravi Varma (1848–1906) was a legendary Indian painter who revolutionized Indian art by fusing European academic techniques with purely Indian sensibilities. At AuraArt Gallery, we draw inspiration from his pioneering spirit of making fine art accessible to all.</p>
+                    <p style="color: var(--text-muted); margin-bottom: var(--space-md); line-height: 1.6;">Raja Ravi Varma (1848–1906) was a legendary Indian painter who revolutionized Indian art by fusing European academic techniques with purely Indian sensibilities. At Aura Art Gallery, we draw inspiration from his pioneering spirit of making fine art accessible to all.</p>
                     <p style="color: var(--text-muted); margin-bottom: var(--space-lg); line-height: 1.6;">Known for his depictions of Hindu deities and scenes from Indian literature, Varma's lithographic press ensured that his masterpieces reached the homes of millions, defining the visual identity of a nation.</p>
                     <button class="btn btn-primary" data-link="varma-history">Learn More About Varma</button>
                 </div>
@@ -251,8 +252,8 @@ export const pages = {
         return `
         <section class="container section-padding" style="padding-top: 120px;">
             <div class="product-detail-grid">
-                <div class="product-gallery" style="display: flex; gap: 20px;">
-                    <div class="thumbnail-strip" style="display: flex; flex-direction: column; gap: 12px; max-height: 500px; overflow-y: auto; padding-right: 5px;">
+                <div class="product-gallery">
+                    <div class="thumbnail-strip">
                         ${(media || []).map((item, index) => `
                             <div class="thumb ${index === 0 ? 'active' : ''}" 
                                  onclick="window.appInstance.changeMedia(${index}, '${id}')" 
@@ -265,7 +266,7 @@ export const pages = {
                         `).join('')}
                     </div>
 
-                    <div id="main-media-display" class="product-image-container frame-container" style="margin: 0; box-shadow: var(--shadow-lg); height: 500px; flex: 1; display: flex; align-items: center; justify-content: center; background: #fff; border-radius: 4px; position: relative; overflow: hidden;">
+                    <div id="main-media-display" class="product-image-container frame-container">
                         ${media[0].type === 'video' 
                             ? `<video src="${media[0].url}" controls autoplay muted class="product-image ${art.needsRotation ? 'rotate-90' : ''}" style="height: 100%; width: 100%; object-fit: contain;"></video>`
                             : `
@@ -281,12 +282,12 @@ export const pages = {
                         }
                     </div>
                 </div>
-                <div class="product-details" style="padding-top: var(--space-md);">
-                    <h1 style="font-size: 3rem; margin-bottom: var(--space-sm);">${art.title}</h1>
-                    <p style="font-size: 1.2rem; color: var(--text-muted); margin-bottom: var(--space-lg);">by ${art.artist}</p>
+                <div class="product-details">
+                    <h1 class="product-detail-title">${art.title}</h1>
+                    <p class="product-detail-artist">by ${art.artist}</p>
                     
-                    <div id="product-price-display" style="font-size: 2.2rem; font-weight: 600; color: var(--accent-color); margin-bottom: var(--space-md);">
-                        ${hasVariants ? 'Starting from ' : ''}${fp(cp(currentPrice))}
+                    <div id="product-price-display" class="product-price-display">
+                        ${hasVariants ? 'Starting from ' : ''}${fp(cp(getFinalPrice(currentPrice)))}
                     </div>
 
                     <!-- Frame Selection -->
@@ -466,39 +467,50 @@ export const pages = {
             `;
         }
 
+        const selectedItems = cart.getSelectedItems();
+        const allSelected = items.length > 0 && selectedItems.length === items.length;
+        const subtotal = cart.getSelectedTotalPrice();
+
         return `
         <section class="container section-padding" style="padding-top: 120px; min-height: 60vh;">
             <h1 class="section-title" style="text-align: left;">Your Cart</h1>
             <div class="cart-grid">
                 <div class="cart-items">
+                    <div style="margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="selectAllCart" ${allSelected ? 'checked' : ''} onchange="window.toggleAllCartSelection(this.checked)" style="width: 18px; height: 18px; cursor: pointer;">
+                        <label for="selectAllCart" style="cursor: pointer; font-weight: 500;">Select All (${items.length} items)</label>
+                    </div>
                     ${(items || []).map(item => `
-                        <div style="display: flex; gap: var(--space-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-md); margin-bottom: var(--space-md);">
-                            <img src="${item.image}" alt="${item.title}" style="width: 100px; height: 100px; object-fit: cover;">
-                            <div style="flex: 1;">
+                        <div class="cart-item-row">
+                            <div style="display: flex; align-items: center;">
+                                <input type="checkbox" ${item.selected !== false ? 'checked' : ''} onchange="window.toggleCartItemSelection('${item.id}', this.checked)" style="width: 18px; height: 18px; cursor: pointer;">
+                            </div>
+                            <img src="${item.image}" alt="${item.title}" class="cart-item-image" style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px;">
+                            <div class="cart-item-info" style="flex: 1;">
                                 <h3 style="font-size: 1.2rem; margin-bottom: 0.2rem;">${item.title}</h3>
                                 <p style="color: var(--text-muted); font-size: 0.9rem;">${item.artist}</p>
                                 <div style="display: flex; gap: 10px; margin-top: 5px;">
                                     ${item.size ? `<span style="background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500;">Size: ${item.size}</span>` : ''}
                                     ${item.frame && item.frame !== 'none' ? `<span style="background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; color: var(--accent-color);">Frame: ${item.frame.charAt(0).toUpperCase() + item.frame.slice(1)}</span>` : ''}
                                 </div>
-                                <button onclick="window.removeFromCart('${item.id}')" style="color: #d9534f; font-size: 0.8rem; margin-top: var(--space-sm); text-decoration: underline;">Remove</button>
-                            </div>
-                            <div style="text-align: right;">
-                                <p style="font-weight: 500; margin-bottom: var(--space-sm);">${fp(cp(item.price))}</p>
-                                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;">
-                                    <button onclick="window.updateQuantity('${item.id}', ${item.quantity - 1})" style="padding: 0 0.5rem; border: 1px solid var(--border-color);">-</button>
-                                    <span>${item.quantity}</span>
-                                    <button onclick="window.updateQuantity('${item.id}', ${item.quantity + 1})" style="padding: 0 0.5rem; border: 1px solid var(--border-color);">+</button>
+                                <div class="cart-item-actions">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 10px;">
+                                        <button onclick="window.updateQuantity('${item.id}', ${item.quantity - 1})" style="padding: 0 0.5rem; border: 1px solid var(--border-color);">-</button>
+                                        <span>${item.quantity}</span>
+                                        <button onclick="window.updateQuantity('${item.id}', ${item.quantity + 1})" style="padding: 0 0.5rem; border: 1px solid var(--border-color);">+</button>
+                                    </div>
+                                    <p style="font-weight: 600; margin-top: 10px;">${fp(cp(item.price * item.quantity))}</p>
+                                    <button onclick="window.removeFromCart('${item.id}')" style="color: #d9534f; font-size: 0.8rem; margin-top: var(--space-sm); text-decoration: underline;">Remove</button>
                                 </div>
                             </div>
                         </div>
                     `).join('')}
                 </div>
-                <div class="cart-summary" style="background: var(--white); padding: var(--space-lg); border: 1px solid var(--border-color); height: fit-content;">
+                <div class="cart-summary" style="background: var(--white); padding: var(--space-lg); border: 1px solid var(--border-color); height: fit-content; position: sticky; top: 120px;">
                     <h3 style="margin-bottom: var(--space-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-sm);">${t('total')}</h3>
                     <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-sm);">
-                        <span>${t('subtotal')}</span>
-                        <span>${fp(cp(cart.getTotalPrice()))}</span>
+                        <span>Subtotal (${selectedItems.length} items)</span>
+                        <span>${fp(cp(subtotal))}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-lg); color: var(--text-muted);">
                         <span>${t('shipping')}</span>
@@ -506,10 +518,15 @@ export const pages = {
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-lg); font-weight: 600; font-size: 1.2rem; border-top: 1px solid var(--border-color); padding-top: var(--space-sm);">
                         <span>${t('total')}</span>
-                        <span>${fp(cp(cart.getTotalPrice()))}</span>
+                        <span>${fp(cp(subtotal))}</span>
                     </div>
-                    <button class="btn btn-primary" style="width: 100%; position: relative;" onclick="window.payNow()">
-                        ${t('checkout')}
+                    
+                    ${selectedItems.length === 0 ? `
+                        <p style="color: #d9534f; font-size: 0.85rem; margin-bottom: 15px; text-align: center;">Please select at least one item to checkout</p>
+                    ` : ''}
+
+                    <button class="btn btn-primary" style="width: 100%; position: relative;" onclick="window.proceedToCheckout()" ${selectedItems.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                        Checkout Selected Items
                     </button>
                 </div>
             </div>
@@ -521,35 +538,154 @@ export const pages = {
         <section class="container section-padding" style="padding-top: 120px; min-height: 60vh;">
             <h1 class="section-title" style="text-align: left;">Checkout</h1>
             <div class="checkout-grid">
-                <form id="checkout-form" style="display: flex; flex-direction: column; gap: var(--space-md);">
+                <form id="checkout-form" onsubmit="event.preventDefault(); window.processCheckout(this);" style="display: flex; flex-direction: column; gap: var(--space-md); width: 100%;">
                     <h3 style="margin-bottom: var(--space-sm);">Contact Information</h3>
-                    <input type="email" placeholder="Email" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none; width: 100%;">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                        <input type="email" name="email" placeholder="Email" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none; width: 100%;">
+                        <input type="tel" name="phone" placeholder="Phone Number" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none; width: 100%;">
+                    </div>
                     
                     <h3 style="margin-top: var(--space-md); margin-bottom: var(--space-sm);">Shipping Address</h3>
                     <div class="form-row-2">
-                        <input type="text" placeholder="First Name" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
-                        <input type="text" placeholder="Last Name" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
+                        <input type="text" name="firstName" placeholder="First Name" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
+                        <input type="text" name="lastName" placeholder="Last Name" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
                     </div>
-                    <input type="text" placeholder="Address" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none; width: 100%;">
+                    <input type="text" name="address" placeholder="Street Address" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none; width: 100%;">
                     <div class="form-row-3">
-                        <input type="text" placeholder="City" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
-                        <input type="text" placeholder="State/Province" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
-                        <input type="text" placeholder="ZIP Code" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
+                        <input type="text" name="city" placeholder="City" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
+                        <input type="text" name="state" placeholder="State/Province" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
+                        <input type="text" name="zip" placeholder="ZIP Code / Pincode" required style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none;">
                     </div>
 
+                    <h3 style="margin-top: var(--space-md); margin-bottom: var(--space-sm);">Delivery Instructions</h3>
+                    <textarea name="deliveryInstructions" placeholder="Any special instructions for delivery? (Optional)" style="padding: 0.8rem; border: 1px solid var(--border-color); outline: none; width: 100%; height: 80px; resize: none; font-family: inherit;"></textarea>
+
                     <h3 style="margin-top: var(--space-md); margin-bottom: var(--space-sm);">Payment Method</h3>
-                    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: var(--space-sm);">
-                        <label style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-color); cursor: pointer; border-radius: 4px;">
-                            <input type="radio" name="payment-method" value="upi" checked> Google Pay / PhonePe (UPI)
+                    <div style="display: flex; flex-direction: column; gap: 18px; margin-bottom: var(--space-sm);">
+                        
+                        <!-- Credit or debit card -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="radio" name="payment-method" value="card" checked> 
+                                <span style="font-weight: 600; font-size: 1.05rem;">Credit or debit card</span>
+                            </label>
+                            
+                            <div id="card-details-preview" style="padding-left: 25px; display: none; margin-bottom: 5px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span id="saved-card-text" style="font-weight: bold; color: #0f1111;"></span>
+                                    <span style="color: #007185; cursor: pointer; font-size: 0.85rem;" onclick="window.openCardModal()">Edit</span>
+                                </div>
+                            </div>
+
+                            <div id="add-card-link-container" style="padding-left: 25px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 5px;">
+                                <a href="#" onclick="event.preventDefault(); window.openCardModal();" style="color: #007185; text-decoration: none; font-size: 0.95rem; font-weight: bold; margin-right: 15px;">+ Add a credit or debit card</a>
+                                <span style="border: 1px solid #ccc; padding: 2px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; color: #1a1f71; background: #fff; display: flex; align-items: center; font-style: italic;">VISA</span>
+                                <span style="border: 1px solid #ccc; padding: 2px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; color: #eb001b; background: #fff; display: flex; align-items: center;">MasterCard</span>
+                                <span style="border: 1px solid #ccc; padding: 2px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; color: #279b37; background: #fff; display: flex; align-items: center;">Amex</span>
+                                <span style="border: 1px solid #ccc; padding: 2px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; color: #005A9E; background: #fff; display: flex; align-items: center;">Diners</span>
+                                <span style="border: 1px solid #ccc; padding: 2px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; color: #cc0000; background: #fff; display: flex; align-items: center;">Maestro</span>
+                                <span style="border: 1px solid #ccc; padding: 2px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; color: #f26622; background: #fff; display: flex; align-items: center; font-style: italic;">RuPay</span>
+                            </div>
+                        </div>
+
+                        <!-- Net Banking -->
+                        <label style="display: flex; flex-direction: column; gap: 8px; cursor: pointer;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="radio" name="payment-method" value="netbanking"> 
+                                <span style="font-weight: 600; font-size: 1.05rem;">Net Banking</span>
+                            </div>
+                            <div style="padding-left: 25px;">
+                                <select style="padding: 6px 12px; border: 1px solid #767676; border-radius: 6px; outline: none; background: #f0f2f2; font-family: inherit; font-size: 0.95rem; box-shadow: 0 1px 2px rgba(15,17,17,.15); cursor: pointer; max-width: 100%;">
+                                    <option>Choose an Option</option>
+                                    <option>Airtel Payments Bank</option>
+                                    <option>Axis Bank</option>
+                                    <option>HDFC Bank</option>
+                                    <option>ICICI Bank</option>
+                                    <option>Kotak Bank</option>
+                                    <option>State Bank of India</option>
+                                    <option disabled>────── All Other Banks ──────</option>
+                                    <option>Allahabad Bank</option>
+                                    <option>Andhra Bank</option>
+                                    <option>Bank of India</option>
+                                    <option>Bank of Maharashtra</option>
+                                    <option>Canara Bank</option>
+                                    <option>Catholic Syrian Bank</option>
+                                    <option>Central Bank of India</option>
+                                    <option>City Union Bank</option>
+                                    <option>Corporation Bank</option>
+                                    <option>Cosmos Bank</option>
+                                    <option>DCB Bank Ltd</option>
+                                    <option>Deutsche Bank</option>
+                                    <option>Dhanlakshmi Bank</option>
+                                    <option>Federal Bank</option>
+                                    <option>IDBI Bank</option>
+                                    <option>IDFC FIRST Bank</option>
+                                    <option>ING Vysya Bank</option>
+                                    <option>Indian Bank</option>
+                                    <option>Indian Overseas Bank</option>
+                                    <option>IndusInd Bank</option>
+                                    <option>Jammu & Kashmir Bank</option>
+                                    <option>Janata Sahakari Bank</option>
+                                    <option>Karnataka Bank Ltd</option>
+                                    <option>Karur Vysya Bank</option>
+                                    <option>Laxmi Vilas Bank - Corporate</option>
+                                    <option>Laxmi Vilas Bank - Retail</option>
+                                    <option>Oriental Bank of Commerce</option>
+                                    <option>PNB YUVA Netbanking</option>
+                                    <option>Punjab National Bank - Corporate Banking</option>
+                                    <option>Punjab National Bank - Retail Banking</option>
+                                    <option>Saraswat Bank</option>
+                                    <option>Shamrao Vitthal Co-operative Bank</option>
+                                    <option>South Indian Bank</option>
+                                    <option>Standard Chartered Bank</option>
+                                    <option>State Bank of Bikaner & Jaipur</option>
+                                    <option>State Bank of Hyderabad</option>
+                                    <option>State Bank of Mysore</option>
+                                    <option>State Bank of Patiala</option>
+                                    <option>State Bank of Travancore</option>
+                                    <option>Syndicate Bank</option>
+                                    <option>Tamilnad Mercantile Bank Ltd.</option>
+                                    <option>Union Bank of India</option>
+                                    <option>United Bank of India</option>
+                                    <option>Yes Bank Ltd</option>
+                                </select>
+                            </div>
                         </label>
-                        <label style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-color); cursor: pointer; border-radius: 4px;">
-                            <input type="radio" name="payment-method" value="card"> Credit / Debit Card
+
+                        <!-- UPI -->
+                        <label style="display: flex; flex-direction: column; gap: 8px; cursor: pointer;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="radio" name="payment-method" value="upi"> 
+                                <span style="font-weight: 600; font-size: 1.05rem;">Scan and Pay with UPI</span>
+                            </div>
+                            <div style="padding-left: 25px; font-size: 0.9rem; color: #0f1111; display: flex; align-items: flex-start; gap: 8px;">
+                                <span style="background: #007185; color: white; border-radius: 50%; min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; margin-top: 2px;">i</span>
+                                <span>You will need to Scan the QR code on the payment page to complete the payment.</span>
+                            </div>
                         </label>
-                        <label style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-color); cursor: pointer; border-radius: 4px;">
-                            <input type="radio" name="payment-method" value="netbanking"> Net Banking
+
+                        <!-- EMI -->
+                        <label style="display: flex; flex-direction: column; gap: 8px; cursor: not-allowed; opacity: 0.6;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="radio" name="payment-method" value="emi" disabled> 
+                                <span style="font-weight: 600; font-size: 1.05rem; color: #767676;">EMI Unavailable</span>
+                                <span style="color: #007185; font-size: 0.95rem;">Why?</span>
+                            </div>
                         </label>
+
+                        <!-- COD (Disabled) -->
+                        <label style="display: flex; flex-direction: column; gap: 8px; cursor: not-allowed; opacity: 0.6;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="radio" name="payment-method" value="cod" disabled> 
+                                <span style="font-weight: 600; font-size: 1.05rem; color: #767676;">Cash on Delivery Unavailable</span>
+                            </div>
+                            <div style="padding-left: 25px; font-size: 0.9rem; color: #767676;">
+                                Cash on Delivery is currently not available for this order.
+                            </div>
+                        </label>
+
                     </div>
-                    <p style="font-size: 0.8rem; color: var(--text-muted);">*Razorpay will securely process your selected payment method on the next screen.</p>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--space-md);">*Razorpay will securely process your selected payment method on the next screen.</p>
                     
                     <button type="submit" class="btn btn-primary" style="margin-top: var(--space-lg);">Place Order</button>
                 </form>
@@ -558,7 +694,7 @@ export const pages = {
                     <h3 style="margin-bottom: var(--space-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-sm);">Order Summary</h3>
                     
                     <div style="margin-bottom: var(--space-lg); max-height: 300px; overflow-y: auto;">
-                        ${(cart.items || []).map(item => `
+                        ${(cart.getSelectedItems() || []).map(item => `
                             <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem;">
                                 <span>${item.title} x ${item.quantity} ${item.frame !== 'none' ? `<br><small style="color: var(--accent-color);">Frame: ${item.frame}</small>` : ''}</span>
                                 <span>${fp(cp(item.price * item.quantity))}</span>
@@ -576,7 +712,7 @@ export const pages = {
 
                     <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-sm);">
                         <span>${t('subtotal')}</span>
-                        <span>${fp(cp(cart.getTotalPrice()))}</span>
+                        <span>${fp(cp(cart.getSelectedTotalPrice()))}</span>
                     </div>
                     <div id="discount-row" style="display: none; justify-content: space-between; margin-bottom: var(--space-sm); color: #4CAF50;">
                         <span>Discount</span>
@@ -588,7 +724,7 @@ export const pages = {
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-lg); font-weight: 600; font-size: 1.2rem; border-top: 1px solid var(--border-color); padding-top: var(--space-sm);">
                         <span>${t('total')}</span>
-                        <span id="checkout-final-total">${fp(cp(cart.getTotalPrice()))}</span>
+                        <span id="checkout-final-total">${fp(cp(cart.getSelectedTotalPrice()))}</span>
                     </div>
                 </div>
             </div>
@@ -850,7 +986,7 @@ export const pages = {
                 <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
                     <button class="btn btn-primary" data-link="home">Go to Home</button>
                     <button class="btn" style="border: 1px solid var(--text-color); background: transparent; color: var(--text-color);" data-link="my-orders">View Orders</button>
-                <button class="btn" style="background: #333; color: white;" onclick="window.appInstance.downloadInvoice()">Download Invoice (AuraArt Gallery)</button>
+                <button class="btn" style="background: #333; color: white;" onclick="window.appInstance.downloadInvoice()">Download Invoice (Aura Art Gallery)</button>
                 </div>
             </div>
         </section>
@@ -913,7 +1049,7 @@ export const pages = {
                         Raja Ravi Varma passed away in 1906, but his impact remains immeasurable. In 1904, on behalf of King-Emperor Edward VII, the Viceroy Lord Curzon awarded him the <strong>Kaiser-i-Hind Gold Medal</strong>. Today, his paintings are considered national treasures, housed in prestigious galleries such as the National Gallery of Modern Art and the Laxmi Vilas Palace.
                     </p>
                     <p style="color: var(--text-muted); line-height: 1.8;">
-                        AuraArt Gallery is proud to carry forward his legacy and his commitment to bringing the beauty of fine art into the modern home.
+                        Aura Art Gallery is proud to carry forward his legacy and his commitment to bringing the beauty of fine art into the modern home.
                     </p>
                 </div>
 

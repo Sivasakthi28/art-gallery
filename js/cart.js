@@ -70,6 +70,17 @@ export class CartManager {
         }
     }
 
+    async removeItems(itemsToRemove) {
+        const idsToRemove = itemsToRemove.map(item => item.id);
+        if (this.userId && this.db) {
+            const deletions = idsToRemove.map(id => deleteDoc(doc(this.db, "users", this.userId, "cart", id)));
+            await Promise.all(deletions);
+        } else {
+            this.items = this.items.filter(item => !idsToRemove.includes(item.id));
+            this.saveGuestCart();
+        }
+    }
+
     async saveOrder(paymentId, userEmail) {
         if (!this.userId || !this.db) throw new Error("User not logged in");
         
@@ -123,7 +134,8 @@ export class CartManager {
             productId: artwork.id, 
             size, 
             frame, 
-            quantity: 1 
+            quantity: 1,
+            selected: true
         };
 
         if (this.userId && this.db) {
@@ -175,6 +187,43 @@ export class CartManager {
 
     getTotalPrice() {
         return this.items.reduce((total, item) => total + (item.price * item.quantity), 0);
+    }
+
+    getSelectedTotalPrice() {
+        return this.items.reduce((total, item) => {
+            if (item.selected !== false) {
+                return total + (item.price * item.quantity);
+            }
+            return total;
+        }, 0);
+    }
+
+    getSelectedItems() {
+        return this.items.filter(item => item.selected !== false);
+    }
+
+    async toggleSelection(id, isSelected) {
+        if (this.userId && this.db) {
+            await setDoc(doc(this.db, "users", this.userId, "cart", id), { selected: isSelected }, { merge: true });
+        } else {
+            const item = this.items.find(item => item.id === id);
+            if (item) {
+                item.selected = isSelected;
+                this.saveGuestCart();
+            }
+        }
+    }
+
+    async toggleAllSelection(isSelected) {
+        if (this.userId && this.db) {
+            const updates = this.items.map(item => 
+                setDoc(doc(this.db, "users", this.userId, "cart", item.id), { selected: isSelected }, { merge: true })
+            );
+            await Promise.all(updates);
+        } else {
+            this.items.forEach(item => item.selected = isSelected);
+            this.saveGuestCart();
+        }
     }
 
     updateCartUI() {

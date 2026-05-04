@@ -8,7 +8,7 @@ import { recent } from './recent.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut }
     from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDoc, deleteDoc, query, where, getDocs, orderBy, updateDoc, onSnapshot }
+import { getFirestore, collection, addDoc, doc, setDoc, getDoc, deleteDoc, query, where, getDocs, orderBy, updateDoc, onSnapshot, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, uploadString, getDownloadURL }
     from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
@@ -202,12 +202,7 @@ class App {
         menuToggle?.addEventListener('click', toggleMenu);
         overlay?.addEventListener('click', toggleMenu);
 
-        // Close menu on link click
-        document.addEventListener('click', (e) => {
-            if (e.target.closest('[data-link]') && mainNav?.classList.contains('active')) {
-                toggleMenu();
-            }
-        });
+        // Close menu logic moved to bindGlobalEvents
 
         // ======================
         // 🔍 SEARCH
@@ -273,7 +268,112 @@ class App {
             this.selectSize(size, price, stock, el);
         };
 
-        window.payNow = async () => {
+        // ======================
+        // CARD MODAL LOGIC
+        // ======================
+        window.openCardModal = () => {
+            const modal = document.getElementById('cardModal');
+            if (modal) modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Lock scrolling
+        };
+
+        window.closeCardModal = () => {
+            const modal = document.getElementById('cardModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = 'auto'; // Unlock scrolling
+        };
+
+        window.submitCardModal = () => {
+            const cardNum = document.getElementById('card-number').value.replace(/\s+/g, '');
+            const cardName = document.getElementById('card-name').value.trim();
+            const expMonth = document.getElementById('card-exp-month').value;
+            const expYear = document.getElementById('card-exp-year').value;
+            const cvv = document.getElementById('card-cvv').value.trim();
+
+            if (cardNum.length < 15 || !cardName || !expMonth || !expYear || cvv.length < 3) {
+                alert("Please fill in all card details correctly.");
+                return;
+            }
+
+            // Update UI Preview
+            const last4 = cardNum.slice(-4);
+            const preview = document.getElementById('card-details-preview');
+            const savedText = document.getElementById('saved-card-text');
+            const linkContainer = document.getElementById('add-card-link-container');
+
+            if (preview && savedText && linkContainer) {
+                savedText.innerText = `Card ending in ${last4}`;
+                preview.style.display = 'block';
+                linkContainer.style.display = 'none';
+            }
+            
+            // Ensure Card radio is selected
+            const cardRadio = document.querySelector('input[name="payment-method"][value="card"]');
+            if (cardRadio) cardRadio.checked = true;
+
+            window.closeCardModal();
+            this.showToast("Card details added successfully!", "success");
+        };
+
+        // Close on ESC or Outside Click
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') window.closeCardModal();
+        });
+        window.addEventListener('mousedown', (e) => {
+            const modal = document.getElementById('cardModal');
+            if (e.target === modal) window.closeCardModal();
+        });
+
+        window.toggleCartItemSelection = async (id, checked) => {
+            await cart.toggleSelection(id, checked);
+            this.navigate('cart'); // Refresh cart view
+        };
+
+        window.toggleAllCartSelection = async (checked) => {
+            await cart.toggleAllSelection(checked);
+            this.navigate('cart'); // Refresh cart view
+        };
+
+        window.proceedToCheckout = () => {
+            if (!this.user) {
+                alert("Please log in to proceed to checkout.");
+                this.navigate('login');
+                return;
+            }
+            const selectedItems = cart.getSelectedItems();
+            if (selectedItems.length === 0) {
+                alert("Please select at least one item to checkout.");
+                return;
+            }
+            this.selectedCheckoutItems = selectedItems;
+            this.navigate('checkout');
+        };
+
+        window.processCheckout = async (form) => {
+            const formData = new FormData(form);
+            const email = formData.get('email');
+            const phone = formData.get('phone');
+            const deliveryInstructions = formData.get('deliveryInstructions') || "";
+            const address = {
+                firstName: formData.get('firstName'),
+                lastName: formData.get('lastName'),
+                street: formData.get('address'),
+                city: formData.get('city'),
+                state: formData.get('state'),
+                zip: formData.get('zip'),
+            };
+            const paymentMethod = formData.get('payment-method');
+
+            const orderDetails = { address, paymentMethod, email, phone, deliveryInstructions };
+
+            if (paymentMethod === 'cod') {
+                await this.placeCODOrder(orderDetails);
+            } else {
+                window.payNow(orderDetails);
+            }
+        };
+
+        window.payNow = async (orderDetails) => {
             if (this.isProcessingPayment) return;
 
             if (!this.user) {
@@ -282,7 +382,8 @@ class App {
                 return;
             }
 
-            const subtotal = cart.getTotalPrice();
+            const checkoutItems = this.selectedCheckoutItems || cart.getSelectedItems();
+            const subtotal = checkoutItems.reduce((total, item) => total + (item.price * item.quantity), 0);
             let discount = 0;
             if (this.appliedCoupon) {
                 discount = this.appliedCoupon.type === 'percentage' 
@@ -318,12 +419,12 @@ class App {
                 key: "rzp_test_ShLcmmo3kCtpxZ", // IMPORTANT: Never use your Key Secret here!
                 amount: Math.round(totalAmount * 100), // Amount in paise (integer)
                 currency: "INR", // INR is strictly required for UPI methods
-                name: "AuraArt Gallery",
+                name: "Aura Art Gallery",
                 description: "Purchase of Artworks",
                 prefill: {
-                    name: this.user.displayName || "Art Collector",
-                    email: this.user.email,
-                    contact: "9999999999" // Dummy contact to allow seamless UPI flow
+                    name: this.user.displayName || (orderDetails.address ? `${orderDetails.address.firstName} ${orderDetails.address.lastName}` : "Art Collector"),
+                    email: orderDetails.email || this.user.email,
+                    contact: orderDetails.phone || "9999999999" 
                 },
                 theme: {
                     color: "#D4AF37"
@@ -332,19 +433,45 @@ class App {
                     try {
                         const paymentId = response.razorpay_payment_id;
                         const orderData = {
-                            items: cart.items,
-                            totalAmount: totalAmount,
-                            discountApplied: discount,
-                            couponCode: window.appInstance.appliedCoupon ? window.appInstance.appliedCoupon.code : null,
-                            email: window.appInstance.user.email,
-                            paymentId: paymentId,
-                            status: "Order Placed",
-                            createdAt: new Date().toISOString()
+                            userId: window.appInstance.user.uid,
+                            customerName: orderDetails.address ? `${orderDetails.address.firstName} ${orderDetails.address.lastName}` : "Unknown",
+                            email: orderDetails.email || window.appInstance.user.email,
+                            phoneNumber: orderDetails.phone || null,
+                            deliveryInstructions: orderDetails.deliveryInstructions || "",
+                            deliveryAddress: orderDetails.address ? {
+                                street: orderDetails.address.street,
+                                city: orderDetails.address.city,
+                                state: orderDetails.address.state,
+                                pincode: orderDetails.address.zip
+                            } : null,
+                            items: checkoutItems.map(item => ({
+                                productId: item.productId || item.id,
+                                title: item.title,
+                                size: item.size || 'Standard',
+                                frame: item.frame || 'none',
+                                quantity: item.quantity,
+                                price: item.price,
+                                subtotal: item.price * item.quantity
+                            })),
+                            paymentDetails: {
+                                paymentMethod: orderDetails.paymentMethod,
+                                paymentStatus: 'Paid',
+                                paymentId: paymentId
+                            },
+                            priceSummary: {
+                                subtotal: subtotal,
+                                discount: discount,
+                                deliveryCharge: 0,
+                                totalAmount: totalAmount
+                            },
+                            totalAmount: totalAmount, // for easy querying
+                            status: "Processing",
+                            createdAt: serverTimestamp()
                         };
                         await addDoc(collection(db, "orders"), orderData);
 
                         // Reduce Stock
-                        for (const item of cart.items) {
+                        for (const item of checkoutItems) {
                             const artRef = doc(db, "products", item.productId || item.id);
                             const artDoc = artworks.find(a => a.id === (item.productId || item.id));
                             if (artDoc) {
@@ -364,7 +491,8 @@ class App {
                             }
                         }
 
-                        await cart.clearCart();
+                        await cart.removeItems(checkoutItems);
+                        window.appInstance.selectedCheckoutItems = null;
                         window.appInstance.showToast("Order placed successfully!", "success");
                         window.appInstance.navigate('success', paymentId);
                     } catch (err) {
@@ -400,17 +528,44 @@ class App {
                     this.isProcessingPayment = true;
                     const fakePaymentId = "pay_mock_net_" + Date.now();
                     const orderData = {
-                        items: cart.items,
-                        totalAmount: totalAmount,
-                        discountApplied: discount,
-                        couponCode: this.appliedCoupon ? this.appliedCoupon.code : null,
+                        userId: this.user.uid,
+                        customerName: orderDetails.address ? `${orderDetails.address.firstName} ${orderDetails.address.lastName}` : "Unknown",
                         email: this.user.email,
-                        paymentId: fakePaymentId,
-                        status: "Order Placed",
-                        createdAt: new Date().toISOString()
+                        phoneNumber: orderDetails.phone || null,
+                        deliveryInstructions: orderDetails.deliveryInstructions || "",
+                        deliveryAddress: orderDetails.address ? {
+                            street: orderDetails.address.street,
+                            city: orderDetails.address.city,
+                            state: orderDetails.address.state,
+                            pincode: orderDetails.address.zip
+                        } : null,
+                        items: checkoutItems.map(item => ({
+                            productId: item.productId || item.id,
+                            title: item.title,
+                            size: item.size || 'Standard',
+                            frame: item.frame || 'none',
+                            quantity: item.quantity,
+                            price: item.price,
+                            subtotal: item.price * item.quantity
+                        })),
+                        paymentDetails: {
+                            paymentMethod: orderDetails.paymentMethod,
+                            paymentStatus: 'Paid',
+                            paymentId: fakePaymentId
+                        },
+                        priceSummary: {
+                            subtotal: subtotal,
+                            discount: discount,
+                            deliveryCharge: 0,
+                            totalAmount: totalAmount
+                        },
+                        totalAmount: totalAmount,
+                        status: "Processing",
+                        createdAt: serverTimestamp()
                     };
+                    await cart.removeItems(checkoutItems);
+                    this.selectedCheckoutItems = null;
                     addDoc(collection(db, "orders"), orderData)
-                        .then(() => cart.clearCart())
                         .then(() => {
                             this.isProcessingPayment = false;
                             this.navigate('success', fakePaymentId);
@@ -423,6 +578,99 @@ class App {
                 }
             }
         };
+    }
+
+    async placeCODOrder(orderDetails) {
+        if (this.isProcessingPayment) return;
+        this.isProcessingPayment = true;
+
+        const checkoutItems = this.selectedCheckoutItems || cart.getSelectedItems();
+        const subtotal = checkoutItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+        let discount = 0;
+        if (this.appliedCoupon) {
+            discount = this.appliedCoupon.type === 'percentage' 
+                ? (subtotal * this.appliedCoupon.value) / 100 
+                : this.appliedCoupon.value;
+        }
+
+        const totalAmount = Math.max(0, subtotal - discount);
+
+        try {
+            const orderId = "cod_" + Date.now();
+            const orderData = {
+                userId: this.user.uid,
+                customerName: orderDetails.address ? `${orderDetails.address.firstName} ${orderDetails.address.lastName}` : "Unknown",
+                email: orderDetails.email || this.user.email,
+                phoneNumber: orderDetails.phone || null,
+                deliveryInstructions: orderDetails.deliveryInstructions || "",
+                deliveryAddress: orderDetails.address ? {
+                    street: orderDetails.address.street,
+                    city: orderDetails.address.city,
+                    state: orderDetails.address.state,
+                    pincode: orderDetails.address.zip
+                } : null,
+                items: checkoutItems.map(item => ({
+                    productId: item.productId || item.id,
+                    title: item.title,
+                    size: item.size || 'Standard',
+                    frame: item.frame || 'none',
+                    quantity: item.quantity,
+                    price: item.price,
+                    subtotal: item.price * item.quantity
+                })),
+                paymentDetails: {
+                    paymentMethod: 'cod',
+                    paymentStatus: 'Pending',
+                    paymentId: orderId
+                },
+                priceSummary: {
+                    subtotal: subtotal,
+                    discount: discount,
+                    deliveryCharge: 0,
+                    totalAmount: totalAmount
+                },
+                totalAmount: totalAmount,
+                status: "Processing",
+                createdAt: serverTimestamp()
+            };
+
+            const { addDoc, collection, doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js");
+            const { db } = await import('./firebase-config.js');
+            const { artworks } = await import('./products.js');
+
+            await addDoc(collection(db, "orders"), orderData);
+
+            // Reduce Stock
+            for (const item of checkoutItems) {
+                const artRef = doc(db, "products", item.productId || item.id);
+                const artDoc = artworks.find(a => a.id === (item.productId || item.id));
+                if (artDoc) {
+                    if (artDoc.variants && item.size) {
+                        const updatedVariants = artDoc.variants.map(v => {
+                            if (v.size === item.size) {
+                                return { ...v, stock: Math.max(0, v.stock - item.quantity) };
+                            }
+                            return v;
+                        });
+                        await updateDoc(artRef, { variants: updatedVariants });
+                    } else {
+                        await updateDoc(artRef, {
+                            stock: Math.max(0, (artDoc.stock || 1) - item.quantity)
+                        });
+                    }
+                }
+            }
+
+            await cart.removeItems(checkoutItems);
+            this.selectedCheckoutItems = null;
+            this.showToast("COD Order placed successfully!", "success");
+            this.isProcessingPayment = false;
+            this.navigate('success', orderId);
+        } catch (err) {
+            console.error("Order Save Error:", err);
+            this.showToast("Error saving order. Contact support.", "error");
+            this.isProcessingPayment = false;
+        }
     }
 
     async initFrames() {
@@ -459,6 +707,16 @@ class App {
                 
                 e.preventDefault();
                 e.stopPropagation();
+                
+                // Close mobile menu if it's open
+                const mainNav = document.getElementById('main-nav');
+                if (mainNav && mainNav.classList.contains('active')) {
+                    document.getElementById('mobile-menu-toggle')?.classList.remove('active');
+                    mainNav.classList.remove('active');
+                    document.getElementById('mobile-overlay')?.classList.remove('active');
+                    document.body.style.overflow = '';
+                }
+
                 this.navigate(route, param);
             }
         });
@@ -474,6 +732,14 @@ class App {
 
         document.getElementById('cartBtn')?.addEventListener('click', (e) => {
             e.stopPropagation();
+            // Close mobile menu if it's open
+            const mainNav = document.getElementById('main-nav');
+            if (mainNav && mainNav.classList.contains('active')) {
+                document.getElementById('mobile-menu-toggle')?.classList.remove('active');
+                mainNav.classList.remove('active');
+                document.getElementById('mobile-overlay')?.classList.remove('active');
+                document.body.style.overflow = '';
+            }
             this.navigate('cart');
         });
     }
@@ -561,7 +827,9 @@ class App {
                     this.selectedVariants[art.id] = { size: def.size, price: def.price, stock: def.stock };
                 }
                 recent.addProduct(art);
-                setTimeout(() => this.initImageZoom(), 100);
+                if (!('ontouchstart' in window)) {
+                    setTimeout(() => this.initImageZoom(), 100);
+                }
             }
         }
 
@@ -613,8 +881,10 @@ class App {
             container.innerHTML = `
                 <div style="text-align: left; background: #f9f9f9; padding: var(--space-md); border-radius: 8px;">
                     <p><strong>Order ID:</strong> ${querySnapshot.docs[0].id}</p>
-                    <p><strong>Payment ID:</strong> ${order.paymentId}</p>
                     <p><strong>Status:</strong> <span style="color: #D4AF37; font-weight: bold;">${order.status}</span></p>
+                    <p><strong>Customer:</strong> ${order.customerName || 'N/A'}</p>
+                    <p><strong>Email:</strong> ${order.email || 'N/A'}</p>
+                    <p><strong>Phone:</strong> ${order.phoneNumber || 'N/A'}</p>
                     <h3 style="margin-top: var(--space-md);">Items Purchased</h3>
                     <ul style="margin-bottom: var(--space-md); padding-left: 20px;">
                         ${itemsHtml}
@@ -646,14 +916,18 @@ class App {
 
             // Since we don't have a composite index for orderBy("createdAt", "desc") yet, we sort in JS
             const orders = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            orders.sort((a, b) => {
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+                return dateB - dateA;
+            });
 
             let html = orders.map(order => `
                 <div class="order-card" style="border: 1px solid var(--border-color); padding: var(--space-md); margin-bottom: var(--space-md); border-radius: 5px;">
                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px;">
                         <div>
                             <strong>Order ID:</strong> ${order.id}<br>
-                            <span style="font-size: 0.8rem; color: gray;">${new Date(order.createdAt).toLocaleString()}</span>
+                            <span style="font-size: 0.8rem; color: gray;">${order.createdAt ? (order.createdAt.toDate ? order.createdAt.toDate().toLocaleString() : new Date(order.createdAt).toLocaleString()) : 'N/A'}</span>
                         </div>
                         <div style="text-align: right;">
                             <strong>Status:</strong> <span style="color: ${order.status === 'Delivered' ? 'green' : '#D4AF37'};">${order.status}</span><br>
@@ -734,14 +1008,15 @@ class App {
                     data.forEach(order => {
                         rowsHtml += `
                             <tr style="border-bottom: 1px solid #ddd;">
-                                <td style="padding: 10px;">${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'}</td>
-                                <td style="padding: 10px;">${order.email || 'N/A'}</td>
+                                <td style="padding: 10px;">${order.createdAt ? (order.createdAt.toDate ? order.createdAt.toDate().toLocaleDateString() : new Date(order.createdAt).toLocaleDateString()) : 'N/A'}</td>
+                                <td style="padding: 10px;">${order.customerName || order.email || 'N/A'}</td>
                                 <td style="padding: 10px; font-size: 0.8rem;">${order.id}</td>
                                 <td style="padding: 10px;">$${(order.totalAmount || 0).toLocaleString()}</td>
                                 <td style="padding: 10px;"><strong>${order.status || 'Processing'}</strong></td>
-                                <td style="padding: 10px;">
-                                    <select onchange="window.updateOrderStatus('${order.id}', this.value)" style="padding: 5px; border-radius: 4px; border: 1px solid #ddd;">
-                                        <option value="Order Placed" ${order.status === 'Order Placed' || !order.status ? 'selected' : ''}>Order Placed</option>
+                                <td style="padding: 10px; display: flex; gap: 5px; align-items: center;">
+                                    <button onclick='window.appInstance.viewOrderDetails(${JSON.stringify(order).replace(/'/g, "&apos;")})' class="btn" style="padding: 5px 10px; font-size: 0.75rem;">View</button>
+                                    <select onchange="window.updateOrderStatus('${order.id}', this.value)" style="padding: 5px; border-radius: 4px; border: 1px solid #ddd; font-size: 0.75rem;">
+                                        <option value="Processing" ${order.status === 'Processing' || !order.status ? 'selected' : ''}>Processing</option>
                                         <option value="Packed" ${order.status === 'Packed' ? 'selected' : ''}>Packed</option>
                                         <option value="Shipped" ${order.status === 'Shipped' ? 'selected' : ''}>Shipped</option>
                                         <option value="Out for Delivery" ${order.status === 'Out for Delivery' ? 'selected' : ''}>Out for Delivery</option>
@@ -788,12 +1063,92 @@ class App {
         window.updateOrderStatus = async (orderId, newStatus) => {
             try {
                 await updateDoc(doc(db, "orders", orderId), { status: newStatus });
-                alert("Order status updated successfully!");
+                this.showToast("Order status updated successfully!", "success");
                 this.initAdminDashboard(); // Refresh
             } catch (e) {
                 console.error("Error updating status:", e);
                 alert("Failed to update status.");
             }
+        };
+
+        this.viewOrderDetails = (order) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.width = '100%';
+            modal.style.height = '100%';
+            modal.style.background = 'rgba(0,0,0,0.7)';
+            modal.style.zIndex = '2000';
+            modal.style.justifyContent = 'center';
+            modal.style.alignItems = 'center';
+
+            const addr = order.deliveryAddress || {};
+            const itemsHtml = (order.items || []).map(i => `
+                <div style="border-bottom: 1px solid #eee; padding: 10px 0; display: flex; justify-content: space-between;">
+                    <div>
+                        <strong>${i.title}</strong><br>
+                        <small>Size: ${i.size} | Frame: ${i.frame} | Qty: ${i.quantity}</small>
+                    </div>
+                    <span>$${(i.subtotal || 0).toLocaleString()}</span>
+                </div>
+            `).join('');
+
+            modal.innerHTML = `
+                <div class="modal-content" style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; position: relative;">
+                    <span onclick="this.parentElement.parentElement.remove()" style="position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 1.5rem;">&times;</span>
+                    <h2 style="margin-bottom: 20px; border-bottom: 2px solid var(--accent-color); padding-bottom: 10px;">Order Details</h2>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+                        <div>
+                            <h4 style="color: var(--text-muted); margin-bottom: 5px; font-size: 0.8rem; text-transform: uppercase;">Customer</h4>
+                            <p><strong>${order.customerName}</strong></p>
+                            <p>${order.email}</p>
+                            <p>${order.phoneNumber}</p>
+                        </div>
+                        <div>
+                            <h4 style="color: var(--text-muted); margin-bottom: 5px; font-size: 0.8rem; text-transform: uppercase;">Shipping Address</h4>
+                            <p>${addr.street || 'N/A'}</p>
+                            <p>${addr.city || ''}, ${addr.state || ''} ${addr.pincode || ''}</p>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 25px;">
+                        <h4 style="color: var(--text-muted); margin-bottom: 10px; font-size: 0.8rem; text-transform: uppercase;">Delivery Instructions</h4>
+                        <p style="background: #f9f9f9; padding: 10px; border-radius: 4px; font-style: italic;">${order.deliveryInstructions || 'No instructions provided.'}</p>
+                    </div>
+
+                    <div style="margin-bottom: 25px;">
+                        <h4 style="color: var(--text-muted); margin-bottom: 10px; font-size: 0.8rem; text-transform: uppercase;">Items</h4>
+                        ${itemsHtml}
+                    </div>
+
+                    <div style="background: #f0f2f2; padding: 20px; border-radius: 4px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span>Subtotal</span>
+                            <span>$${(order.priceSummary?.subtotal || 0).toLocaleString()}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #c45500;">
+                            <span>Discount</span>
+                            <span>-$${(order.priceSummary?.discount || 0).toLocaleString()}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 10px;">
+                            <span>Delivery</span>
+                            <span>Free</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.2rem;">
+                            <span>Total Amount</span>
+                            <span style="color: var(--accent-color);">$${(order.totalAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <div style="margin-top: 15px; font-size: 0.85rem; color: var(--text-muted);">
+                            <span>Method: ${order.paymentDetails?.paymentMethod?.toUpperCase()} | Status: ${order.paymentDetails?.paymentStatus}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
         };
     }
 
@@ -1117,7 +1472,7 @@ class App {
                     <tr style="border-bottom: 1px solid #ddd; transition: background 1s; background: ${isHighlighted ? '#fff9db' : 'transparent'};">
                         <td style="padding: 10px;"><img src="${prod.image}" width="50" style="border-radius: 5px; height: 50px; object-fit: cover;"></td>
                         <td style="padding: 10px;">${prod.title}</td>
-                        <td style="padding: 10px;">$${prod.price.toLocaleString()}</td>
+                        <td style="padding: 10px;">$${this.getFinalPrice(prod.price).toLocaleString()}</td>
                         <td style="padding: 10px;">${prod.category}</td>
                         <td style="padding: 10px;">
                             <button class="btn" style="padding: 5px 10px; background: #007185; color: white; border-radius: 4px; margin-right: 5px;" onclick="window.appInstance.editProduct('${prod.id}')">Edit</button>
@@ -1317,6 +1672,10 @@ class App {
         return this.translations[this.language][key] || key;
     }
 
+    getFinalPrice(price) {
+        return price * 2;
+    }
+
     convertPrice(price) {
         // Source of truth is now INR (₹250 in DB = ₹250 on screen)
         if (this.currency === 'USD') return price / 83;
@@ -1433,6 +1792,7 @@ class App {
         const selected = this.selectedVariants[id];
         const finalSize = size || (selected ? selected.size : (art.variants ? art.variants[0].size : 'Standard'));
         const finalPrice = price || (selected ? selected.price : (art.variants ? art.variants[0].price : art.price));
+        const doubledPrice = this.getFinalPrice(finalPrice);
         
         const variant = art.variants ? art.variants.find(v => v.size === finalSize) : null;
         const finalStock = variant ? variant.stock : (art.stock || 0);
@@ -1445,9 +1805,9 @@ class App {
         // Store selected size and price in the cart item (Requirement 4)
         const cartItem = { 
             ...art, 
-            price: finalPrice,
+            price: doubledPrice,
             selectedSize: finalSize,
-            selectedPrice: finalPrice
+            selectedPrice: doubledPrice
         };
         
         // Get currently selected frame from localStorage or fallback
@@ -1468,7 +1828,7 @@ class App {
         // Update UI Price
         const priceDisplay = document.getElementById('product-price-display');
         if (priceDisplay) {
-            priceDisplay.innerText = this.formatPrice(this.convertPrice(price));
+            priceDisplay.innerText = this.formatPrice(this.convertPrice(this.getFinalPrice(price)));
         }
 
         // Update Active Button
@@ -1808,7 +2168,7 @@ class App {
     }
 
     updateCheckoutTotals() {
-        const subtotal = cart.getTotalPrice();
+        const subtotal = cart.getSelectedTotalPrice();
         let discount = 0;
 
         if (this.appliedCoupon) {
@@ -1945,15 +2305,17 @@ class App {
             } else {
                 display.innerHTML = `
                     <div class="zoom-container" onclick="window.appInstance.openFullscreen('${item.url}')" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fdfdfd;">
-                        <div id="frame-master-wrapper" class="artwork-frame-wrapper" style="position: relative; width: 100%; height: 500px; display: flex; align-items: center; justify-content: center; background-size: 100% 100%; background-position: center; transition: all 0.5s ease-in-out;">
-                            <div id="artwork-inner-container" style="position: relative; width: 100%; height: 100%; transition: all 0.5s ease-in-out; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        <div id="frame-master-wrapper" class="artwork-frame-wrapper" style="position: relative; width: 100%; display: flex; align-items: center; justify-content: center; background-size: 100% 100%; background-position: center; transition: all 0.5s ease-in-out;">
+                            <div id="artwork-inner-container" style="position: relative; transition: all 0.5s ease-in-out; display: flex; align-items: center; justify-content: center; overflow: hidden;">
                                 <img src="${item.url}" alt="${art.title}" class="zoom-image ${art.needsRotation ? 'rotate-90' : ''}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; box-shadow: 0 4px 15px rgba(0,0,0,0.1); z-index: 1; opacity: 0; transition: opacity 0.3s;">
                             </div>
                         </div>
                         <div class="zoom-hint" style="z-index: 3;">Roll over to zoom | Click for full view</div>
                     </div>
                 `;
-                this.initImageZoom();
+                if (!('ontouchstart' in window)) {
+                    this.initImageZoom();
+                }
                 // Restore frame choice for new image
                 const savedFrame = localStorage.getItem(`frame_${artId}`) || 'none';
                 this.selectFrame(savedFrame);
