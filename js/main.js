@@ -193,14 +193,35 @@ class App {
         const overlay = document.getElementById('mobile-overlay');
 
         const toggleMenu = () => {
+            const isActive = mainNav?.classList.contains('active');
+            console.log(`📱 Menu Toggle: ${!isActive ? 'Opening' : 'Closing'}`);
             menuToggle?.classList.toggle('active');
             mainNav?.classList.toggle('active');
             overlay?.classList.toggle('active');
-            document.body.style.overflow = mainNav?.classList.contains('active') ? 'hidden' : '';
+            document.body.style.overflow = !isActive ? 'hidden' : '';
         };
 
-        menuToggle?.addEventListener('click', toggleMenu);
-        overlay?.addEventListener('click', toggleMenu);
+        const closeMenu = () => {
+            console.log('📱 Closing Mobile Menu');
+            menuToggle?.classList.remove('active');
+            mainNav?.classList.remove('active');
+            overlay?.classList.remove('active');
+            document.body.style.overflow = '';
+        };
+
+        this.closeMobileMenu = closeMenu;
+
+        menuToggle?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleMenu();
+        });
+
+        overlay?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeMenu();
+        });
 
         // Close menu logic moved to bindGlobalEvents
 
@@ -692,34 +713,42 @@ class App {
     // ======================
     bindGlobalEvents() {
         console.log('🔗 Binding global events...');
-        document.addEventListener('click', (e) => {
+
+        const handleNavigation = (e) => {
             const linkElement = e.target.closest('[data-link]');
             if (linkElement) {
-                // If we clicked an interactive element that handles its own action, ignore
-                if (e.target.closest('.wishlist-btn, .quick-add, .nav-select, button:not([data-link])')) {
-                    return; 
+                // Ignore clicks on wishlist heart icon if it's inside a product card link
+                if (e.target.closest('.wishlist-btn')) {
+                    return;
                 }
 
                 const route = linkElement.getAttribute('data-link');
                 const param = linkElement.getAttribute('data-param');
                 
-                console.log(`🚀 Click triggered: ${route}${param ? ' (' + param + ')' : ''}`);
+                console.log(`🚀 Navigation triggered: ${route}${param ? ' (' + param + ')' : ''} via ${e.type}`);
                 
                 e.preventDefault();
                 e.stopPropagation();
                 
-                // Close mobile menu if it's open
-                const mainNav = document.getElementById('main-nav');
-                if (mainNav && mainNav.classList.contains('active')) {
-                    document.getElementById('mobile-menu-toggle')?.classList.remove('active');
-                    mainNav.classList.remove('active');
-                    document.getElementById('mobile-overlay')?.classList.remove('active');
-                    document.body.style.overflow = '';
-                }
+                // Close mobile menu
+                this.closeMobileMenu();
 
                 this.navigate(route, param);
             }
-        });
+        };
+
+        // Standard Click
+        document.addEventListener('click', handleNavigation);
+
+        // Touch Support for Mobile
+        document.addEventListener('touchstart', (e) => {
+            // Only handle if it's a data-link to avoid interfering with scrolling
+            if (e.target.closest('[data-link]')) {
+                // We don't preventDefault here to avoid blocking native scrolling
+                // but we can log for debugging
+                console.log('📱 Touchstart on data-link');
+            }
+        }, { passive: true });
 
         window.addEventListener('scroll', () => {
             const header = document.getElementById('header');
@@ -731,15 +760,9 @@ class App {
         });
 
         document.getElementById('cartBtn')?.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
-            // Close mobile menu if it's open
-            const mainNav = document.getElementById('main-nav');
-            if (mainNav && mainNav.classList.contains('active')) {
-                document.getElementById('mobile-menu-toggle')?.classList.remove('active');
-                mainNav.classList.remove('active');
-                document.getElementById('mobile-overlay')?.classList.remove('active');
-                document.body.style.overflow = '';
-            }
+            this.closeMobileMenu();
             this.navigate('cart');
         });
     }
